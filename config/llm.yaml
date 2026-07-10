@@ -1,0 +1,16 @@
+openai:
+  api_key: "${OPENAI_API_KEY}"
+  base_url: "https://api.openai.com/v1"
+  model: "gpt-3.5-turbo"
+  temperature: 0.7
+  max_tokens: 4096
+  stream: true
+
+digital_employee:
+  enabled: true
+  commands:
+    - "@天气"
+    - "@新闻"
+    - "@音乐"
+    - "@电影"
+    - "@川哥"

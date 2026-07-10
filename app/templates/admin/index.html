@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="layui-row">
+    <div class="layui-col-md3">
+        <div class="admin-card">
+            <div class="layui-row">
+                <div class="layui-col-md8">
+                    <h3 class="text-2xl font-bold text-gray-800">128</h3>
+                    <p class="text-gray-500 text-sm">总用户数</p>
+                </div>
+                <div class="layui-col-md4 text-right">
+                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
+                        <i class="fas fa-users text-blue-500 text-xl"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="layui-col-md3">
+        <div class="admin-card">
+            <div class="layui-row">
+                <div class="layui-col-md8">
+                    <h3 class="text-2xl font-bold text-gray-800">56</h3>
+                    <p class="text-gray-500 text-sm">今日访问</p>
+                </div>
+                <div class="layui-col-md4 text-right">
+                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                        <i class="fas fa-eye text-green-500 text-xl"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="layui-col-md3">
+        <div class="admin-card">
+            <div class="layui-row">
+                <div class="layui-col-md8">
+                    <h3 class="text-2xl font-bold text-gray-800">24</h3>
+                    <p class="text-gray-500 text-sm">活跃对话</p>
+                </div>
+                <div class="layui-col-md4 text-right">
+                    <div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto">
+                        <i class="fas fa-comments text-purple-500 text-xl"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="layui-col-md3">
+        <div class="admin-card">
+            <div class="layui-row">
+                <div class="layui-col-md8">
+                    <h3 class="text-2xl font-bold text-gray-800">8</h3>
+                    <p class="text-gray-500 text-sm">采集任务</p>
+                </div>
+                <div class="layui-col-md4 text-right">
+                    <div class="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
+                        <i class="fas fa-download text-orange-500 text-xl"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="layui-row">
+    <div class="layui-col-md8">
+        <div class="admin-card">
+            <div class="layui-card-header">
+                <h4 class="font-bold text-gray-800">数据概览</h4>
+            </div>
+            <div class="layui-card-body">
+                <div id="main-chart" style="height: 300px;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="layui-col-md4">
+        <div class="admin-card">
+            <div class="layui-card-header">
+                <h4 class="font-bold text-gray-800">快速操作</h4>
+            </div>
+            <div class="layui-card-body">
+                <div class="layui-btn-group-vertical w-full">
+                    <button class="layui-btn layui-btn-primary w-full text-left">
+                        <i class="fas fa-plus-circle mr-2"></i>添加用户
+                    </button>
+                    <button class="layui-btn layui-btn-primary w-full text-left">
+                        <i class="fas fa-search mr-2"></i>查看数据
+                    </button>
+                    <button class="layui-btn layui-btn-primary w-full text-left">
+                        <i class="fas fa-refresh mr-2"></i>刷新采集
+                    </button>
+                    <button class="layui-btn layui-btn-primary w-full text-left">
+                        <i class="fas fa-chart-bar mr-2"></i>查看报表
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="admin-card">
+            <div class="layui-card-header">
+                <h4 class="font-bold text-gray-800">系统状态</h4>
+            </div>
+            <div class="layui-card-body">
+                <div class="layui-progress layui-progress-big" lay-showpercent="true">
+                    <div class="layui-progress-bar layui-bg-blue" lay-percent="60%"></div>
+                </div>
+                <p class="text-gray-500 text-sm mt-2">CPU 使用率</p>
+                <div class="layui-progress layui-progress-big" lay-showpercent="true">
+                    <div class="layui-progress-bar layui-bg-green" lay-percent="45%"></div>
+                </div>
+                <p class="text-gray-500 text-sm mt-2">内存使用率</p>
+                <div class="layui-progress layui-progress-big" lay-showpercent="true">
+                    <div class="layui-progress-bar layui-bg-orange" lay-percent="30%"></div>
+                </div>
+                <p class="text-gray-500 text-sm mt-2">磁盘使用率</p>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="layui-row">
+    <div class="layui-col-md12">
+        <div class="admin-card">
+            <div class="layui-card-header">
+                <h4 class="font-bold text-gray-800">最近活动</h4>
+            </div>
+            <div class="layui-card-body">
+                <table class="layui-table">
+                    <thead>
+                        <tr>
+                            <th>操作人</th>
+                            <th>操作类型</th>
+                            <th>操作内容</th>
+                            <th>操作时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>admin</td>
+                            <td><span class="layui-badge">登录</span></td>
+                            <td>管理员登录系统</td>
+                            <td>2025-01-15 10:30:00</td>
+                        </tr>
+                        <tr>
+                            <td>user001</td>
+                            <td><span class="layui-badge layui-bg-green">对话</span></td>
+                            <td>发起智能问数对话</td>
+                            <td>2025-01-15 10:25:00</td>
+                        </tr>
+                        <tr>
+                            <td>user002</td>
+                            <td><span class="layui-badge layui-bg-blue">查询</span></td>
+                            <td>查询销售报表</td>
+                            <td>2025-01-15 10:20:00</td>
+                        </tr>
+                        <tr>
+                            <td>admin</td>
+                            <td><span class="layui-badge layui-bg-orange">配置</span></td>
+                            <td>更新模型引擎配置</td>
+                            <td>2025-01-15 10:15:00</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% end %}
+{% block script %}
+<script>
+layui.use(['element', 'progress'], function(){
+    var element = layui.element;
+    element.init();
+});
+</script>
+{% end %}

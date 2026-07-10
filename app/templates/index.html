@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block body %}
+<div>
+    <h2>用户首页</h2>
+    <form method="post" action="??">
+        {% module xsrf_form_html() %}
+        <button type="submit">退出</button>
+    </form>
+</div>
+
+<div>
+    当前登录用户：{{ username }}
+</div>
+
+{% end %}
