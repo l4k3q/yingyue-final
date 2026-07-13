@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="admin-page">
+    <div class="page-header">
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <h2>数据仓库</h2>
+            <div style="display: flex; gap: 16px;">
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: 700; color: #165DFF;">{{ stats.get('total', 0) }}</div>
+                    <div style="font-size: 12px; color: #86909C;">总数据量</div>
+                </div>
+                <div style="width: 1px; background: #EBEEF5;"></div>
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: 700; color: #52C41A;">{{ stats.get('deep_collected', 0) }}</div>
+                    <div style="font-size: 12px; color: #86909C;">深度采集</div>
+                </div>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button class="layui-btn layui-btn-primary" onclick="showSearch()">
+                <i class="layui-icon layui-icon-search"></i> 搜索
+            </button>
+        </div>
+    </div>
+
+    <div class="search-bar" id="searchBar">
+        <div class="layui-form-item">
+            <div class="layui-inline">
+                <label class="layui-form-label">关键词</label>
+                <div class="layui-input-inline">
+                    <input type="text" name="keyword" id="keyword" value="{{ keyword }}" placeholder="标题/摘要/关键词" class="layui-input">
+                </div>
+            </div>
+            <div class="layui-inline">
+                <label class="layui-form-label">来源</label>
+                <div class="layui-input-inline">
+                    <input type="text" name="source" id="source" value="{{ source }}" placeholder="来源名称" class="layui-input">
+                </div>
+            </div>
+            <button class="layui-btn" onclick="doSearch()">搜索</button>
+            {% if keyword or source %}
+            <button class="layui-btn layui-btn-primary" onclick="clearSearch()">清除</button>
+            {% end %}
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="layui-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>标题</th>
+                    <th>摘要</th>
+                    <th>来源</th>
+                    <th>关键词</th>
+                    <th>深度采集</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in records %}
+                <tr>
+                    <td>{{ record["id"] }}</td>
+                    <td style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ record['title'] }}">
+                        {{ record["title"] }}
+                    </td>
+                    <td style="max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ record['summary'] }}">
+                        {{ record["summary"] if record["summary"] else "-" }}
+                    </td>
+                    <td>
+                        <span class="layui-badge layui-bg-blue">{{ record["source"] if record["source"] else "-" }}</span>
+                    </td>
+                    <td>{{ record["keyword"] if record["keyword"] else "-" }}</td>
+                    <td>
+                        {% if record["is_deep_collected"] == 1 %}
+                        <span class="layui-badge layui-bg-green">是</span>
+                        {% else %}
+                        <span class="layui-badge layui-bg-gray">否</span>
+                        {% end %}
+                    </td>
+                    <td>{{ record["created_at"] }}</td>
+                    <td>
+                        <button class="layui-btn layui-btn-xs" onclick="viewRecord({{ record['id'] }})">
+                            <i class="layui-icon layui-icon-search"></i> 查看
+                        </button>
+                        <button class="layui-btn layui-btn-xs {% if record['is_deep_collected'] == 1 %}layui-btn-warm{% else %}layui-btn-normal{% end %}" 
+                                onclick="deepCollect({{ record['id'] }})">
+                            {% if record["is_deep_collected"] == 1 %}已采集{% else %}深度采集{% end %}
+                        </button>
+                        <button class="layui-btn layui-btn-xs layui-btn-danger" onclick="deleteRecord({{ record['id'] }})">
+                            <i class="layui-icon layui-icon-delete"></i> 删除
+                        </button>
+                    </td>
+                </tr>
+                {% end %}
+                {% if not records %}
+                <tr>
+                    <td colspan="8" class="text-center">暂无数据</td>
+                </tr>
+                {% end %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-container">
+        <div class="layui-laypage">
+            {% set pages = (total + 19) // 20 %}
+            {% if page > 1 %}
+            <a href="/admin/data?page={{ page-1 }}&keyword={{ keyword }}&source={{ source }}">上一页</a>
+            {% end %}
+            {% for p in range(1, pages+1) %}
+            {% if p == page %}
+            <span class="layui-laypage-curr"><em>{{ p }}</em></span>
+            {% else %}
+            <a href="/admin/data?page={{ p }}&keyword={{ keyword }}&source={{ source }}">{{ p }}</a>
+            {% end %}
+            {% end %}
+            {% if page < pages %}
+            <a href="/admin/data?page={{ page+1 }}&keyword={{ keyword }}&source={{ source }}">下一页</a>
+            {% end %}
+            <span>共 {{ total }} 条</span>
+        </div>
+    </div>
+</div>
+
+<div class="layui-modal" id="recordModal">
+    <div class="layui-modal-content" style="width: 700px;">
+        <div class="layui-modal-header">
+            <h3 id="modalTitle">查看数据详情</h3>
+            <button class="layui-close" onclick="closeModal()"></button>
+        </div>
+        <div class="layui-modal-body" id="recordDetail">
+        </div>
+        <div class="layui-modal-footer">
+            <button class="layui-btn layui-btn-primary" onclick="closeModal()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<div class="float-panel" id="deepCollectPanel" style="display: none;">
+    <div class="float-panel-header">
+        <h4><i class="layui-icon layui-icon-refresh"></i> 深度采集任务</h4>
+        <button class="layui-close" onclick="toggleDeepCollectPanel()"></button>
+    </div>
+    <div class="float-panel-body">
+        <div class="layui-form-item">
+            <label class="layui-form-label">任务状态</label>
+            <div class="layui-input-block">
+                <span class="layui-badge layui-bg-gray">暂无任务</span>
+            </div>
+        </div>
+        <div class="layui-form-item">
+            <label class="layui-form-label">进度</label>
+            <div class="layui-input-block">
+                <div class="layui-progress layui-progress-big" lay-showPercent="true">
+                    <div class="layui-progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+        <div class="layui-form-item">
+            <label class="layui-form-label">任务列表</label>
+            <div class="layui-input-block" style="max-height: 200px; overflow-y: auto;">
+                <div style="text-align: center; color: #86909C;">暂无深度采集任务</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showSearch() {
+    document.getElementById('searchBar').style.display = document.getElementById('searchBar').style.display === 'none' ? 'block' : 'none';
+}
+
+function doSearch() {
+    var keyword = document.getElementById('keyword').value;
+    var source = document.getElementById('source').value;
+    var url = '/admin/data?keyword=' + encodeURIComponent(keyword);
+    if (source) {
+        url += '&source=' + encodeURIComponent(source);
+    }
+    window.location.href = url;
+}
+
+function clearSearch() {
+    window.location.href = '/admin/data';
+}
+
+function viewRecord(id) {
+    fetch('/admin/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'action=view&id=' + id
+    }).then(r => r.json()).then(data => {
+        if (data) {
+            var html = '<div class="layui-form">';
+            html += '<div class="layui-form-item"><label class="layui-form-label">标题</label><div class="layui-input-block"><span style="line-height: 36px;">' + (data.title || '-') + '</span></div></div>';
+            html += '<div class="layui-form-item"><label class="layui-form-label">摘要</label><div class="layui-input-block"><p style="line-height: 1.6;">' + (data.summary || '-') + '</p></div></div>';
+            html += '<div class="layui-form-item"><label class="layui-form-label">来源</label><div class="layui-input-block"><span class="layui-badge layui-bg-blue">' + (data.source || '-') + '</span></div></div>';
+            html += '<div class="layui-form-item"><label class="layui-form-label">关键词</label><div class="layui-input-block"><span style="line-height: 36px;">' + (data.keyword || '-') + '</span></div></div>';
+            html += '<div class="layui-form-item"><label class="layui-form-label">深度采集</label><div class="layui-input-block"><span class="layui-badge ' + (data.is_deep_collected == 1 ? 'layui-bg-green">是' : 'layui-bg-gray">否') + '</span></div></div>';
+            html += '<div class="layui-form-item"><label class="layui-form-label">采集时间</label><div class="layui-input-block"><span style="line-height: 36px;">' + (data.created_at || '-') + '</span></div></div>';
+            html += '<div class="layui-form-item"><label class="layui-form-label">链接</label><div class="layui-input-block"><a href="' + (data.url || '#') + '" target="_blank" style="line-height: 36px; color: #165DFF;">点击访问</a></div></div>';
+            html += '</div>';
+            document.getElementById('recordDetail').innerHTML = html;
+            document.getElementById('recordModal').style.display = 'block';
+        }
+    });
+}
+
+function deepCollect(id) {
+    if (confirm('确定要进行深度采集吗？')) {
+        fetch('/admin/data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=deep_collect&id=' + id
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                alert(data.message);
+                window.location.href = '/admin/data';
+            } else {
+                alert(data.message);
+            }
+        });
+    }
+}
+
+function deleteRecord(id) {
+    if (confirm('确定要删除该数据吗？')) {
+        fetch('/admin/data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=delete&id=' + id
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                window.location.href = '/admin/data';
+            } else {
+                alert(data.message);
+            }
+        });
+    }
+}
+
+function closeModal() {
+    document.getElementById('recordModal').style.display = 'none';
+}
+
+function toggleDeepCollectPanel() {
+    var panel = document.getElementById('deepCollectPanel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% end %}

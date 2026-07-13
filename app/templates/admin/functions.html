@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="admin-page">
+    <div class="page-header">
+        <h2>功能管理</h2>
+        <div class="header-actions">
+            <button class="layui-btn layui-btn-primary" onclick="showSearch()">
+                <i class="layui-icon layui-icon-search"></i> 搜索
+            </button>
+            <button class="layui-btn" onclick="showAddModal()">
+                <i class="layui-icon layui-icon-add-circle"></i> 新增功能
+            </button>
+        </div>
+    </div>
+
+    <div class="search-bar" id="searchBar">
+        <div class="layui-form-item">
+            <div class="layui-inline">
+                <label class="layui-form-label">关键词</label>
+                <div class="layui-input-inline">
+                    <input type="text" name="keyword" id="keyword" value="{{ keyword }}" placeholder="功能名称" class="layui-input">
+                </div>
+            </div>
+            <button class="layui-btn" onclick="doSearch()">搜索</button>
+            {% if keyword %}
+            <button class="layui-btn layui-btn-primary" onclick="clearSearch()">清除</button>
+            {% end %}
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="layui-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>图标</th>
+                    <th>功能名称</th>
+                    <th>数据地址</th>
+                    <th>上级功能</th>
+                    <th>排序</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for func in functions %}
+                <tr>
+                    <td>{{ func["id"] }}</td>
+                    <td>
+                        {% if func["icon"] %}
+                        <i class="layui-icon {{ func['icon'] }}"></i>
+                        {% else %}
+                        -
+                        {% end %}
+                    </td>
+                    <td>{{ func["name"] }}</td>
+                    <td>{{ func["url"] if func["url"] else "-" }}</td>
+                    <td>
+                        {% set parent = [p for p in parent_options if p['id'] == func['parent_id']] %}
+                        {{ parent[0]['name'] if parent else '顶级' }}
+                    </td>
+                    <td>{{ func["sort_order"] }}</td>
+                    <td>
+                        {% if func["status"] == 1 %}
+                        <span class="layui-badge layui-bg-green">正常</span>
+                        {% else %}
+                        <span class="layui-badge layui-bg-red">禁用</span>
+                        {% end %}
+                    </td>
+                    <td>{{ func["created_at"] }}</td>
+                    <td>
+                        <button class="layui-btn layui-btn-xs" onclick="showEditModal({{ func['id'] }}, '{{ func['name'] }}', '{{ func['icon'] }}', '{{ func['url'] }}', {{ func['parent_id'] }}, {{ func['sort_order'] }})">
+                            <i class="layui-icon layui-icon-edit"></i> 修改
+                        </button>
+                        <button class="layui-btn layui-btn-xs {% if func['status'] == 1 %}layui-btn-warm{% else %}layui-btn-normal{% end %}" 
+                                onclick="toggleStatus({{ func['id'] }}, {{ 0 if func['status'] == 1 else 1 }})">
+                            {% if func["status"] == 1 %}禁用{% else %}启用{% end %}
+                        </button>
+                        <button class="layui-btn layui-btn-xs layui-btn-danger" onclick="deleteFunction({{ func['id'] }})">
+                            <i class="layui-icon layui-icon-delete"></i> 删除
+                        </button>
+                    </td>
+                </tr>
+                {% end %}
+                {% if not functions %}
+                <tr>
+                    <td colspan="9" class="text-center">暂无数据</td>
+                </tr>
+                {% end %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-container">
+        <div class="layui-laypage">
+            {% set pages = (total + 19) // 20 %}
+            {% if page > 1 %}
+            <a href="/admin/functions?page={{ page-1 }}&keyword={{ keyword }}">上一页</a>
+            {% end %}
+            {% for p in range(1, pages+1) %}
+            {% if p == page %}
+            <span class="layui-laypage-curr"><em>{{ p }}</em></span>
+            {% else %}
+            <a href="/admin/functions?page={{ p }}&keyword={{ keyword }}">{{ p }}</a>
+            {% end %}
+            {% end %}
+            {% if page < pages %}
+            <a href="/admin/functions?page={{ page+1 }}&keyword={{ keyword }}">下一页</a>
+            {% end %}
+            <span>共 {{ total }} 条</span>
+        </div>
+    </div>
+</div>
+
+<div class="layui-modal" id="funcModal">
+    <div class="layui-modal-content">
+        <div class="layui-modal-header">
+            <h3 id="modalTitle">新增功能</h3>
+            <button class="layui-close" onclick="closeModal()"></button>
+        </div>
+        <div class="layui-modal-body">
+            <form class="layui-form" id="funcForm">
+                <input type="hidden" name="id" id="funcId">
+                <div class="layui-form-item">
+                    <label class="layui-form-label">功能名称</label>
+                    <div class="layui-input-block">
+                        <input type="text" name="name" id="name" required lay-verify="required" placeholder="请输入功能名称" class="layui-input">
+                    </div>
+                </div>
+                <div class="layui-form-item">
+                    <label class="layui-form-label">图标</label>
+                    <div class="layui-input-block">
+                        <input type="text" name="icon" id="icon" placeholder="layui图标类名" class="layui-input">
+                    </div>
+                </div>
+                <div class="layui-form-item">
+                    <label class="layui-form-label">数据地址</label>
+                    <div class="layui-input-block">
+                        <input type="text" name="url" id="url" placeholder="如 /admin/users" class="layui-input">
+                    </div>
+                </div>
+                <div class="layui-form-item">
+                    <label class="layui-form-label">上级功能</label>
+                    <div class="layui-input-block">
+                        <select name="parent_id" id="parent_id">
+                            <option value="0">顶级功能</option>
+                            {% for p in parent_options %}
+                            <option value="{{ p['id'] }}">{{ p['name'] }}</option>
+                            {% end %}
+                        </select>
+                    </div>
+                </div>
+                <div class="layui-form-item">
+                    <label class="layui-form-label">排序</label>
+                    <div class="layui-input-block">
+                        <input type="number" name="sort_order" id="sort_order" value="0" class="layui-input">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="layui-modal-footer">
+            <button class="layui-btn layui-btn-primary" onclick="closeModal()">取消</button>
+            <button class="layui-btn" onclick="submitForm()">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function showSearch() {
+    document.getElementById('searchBar').style.display = document.getElementById('searchBar').style.display === 'none' ? 'block' : 'none';
+}
+
+function doSearch() {
+    var keyword = document.getElementById('keyword').value;
+    window.location.href = '/admin/functions?keyword=' + encodeURIComponent(keyword);
+}
+
+function clearSearch() {
+    window.location.href = '/admin/functions';
+}
+
+function showAddModal() {
+    document.getElementById('modalTitle').innerText = '新增功能';
+    document.getElementById('funcId').value = '';
+    document.getElementById('name').value = '';
+    document.getElementById('icon').value = '';
+    document.getElementById('url').value = '';
+    document.getElementById('parent_id').value = '0';
+    document.getElementById('sort_order').value = '0';
+    document.getElementById('funcModal').style.display = 'block';
+}
+
+function showEditModal(id, name, icon, url, parentId, sortOrder) {
+    document.getElementById('modalTitle').innerText = '修改功能';
+    document.getElementById('funcId').value = id;
+    document.getElementById('name').value = name;
+    document.getElementById('icon').value = icon;
+    document.getElementById('url').value = url;
+    document.getElementById('parent_id').value = parentId;
+    document.getElementById('sort_order').value = sortOrder;
+    document.getElementById('funcModal').style.display = 'block';
+}
+
+function closeModal() {
+    document.getElementById('funcModal').style.display = 'none';
+}
+
+function submitForm() {
+    var id = document.getElementById('funcId').value;
+    var action = id ? 'edit' : 'add';
+    var form = document.getElementById('funcForm');
+    var formData = new FormData(form);
+    formData.append('action', action);
+    
+    fetch('/admin/functions', {
+        method: 'POST',
+        body: formData
+    }).then(function() {
+        window.location.href = '/admin/functions';
+    });
+}
+
+function toggleStatus(id, status) {
+    if (confirm('确定要' + (status === 1 ? '启用' : '禁用') + '该功能吗？')) {
+        fetch('/admin/functions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=toggle&id=' + id + '&status=' + status
+        }).then(function() {
+            window.location.href = '/admin/functions';
+        });
+    }
+}
+
+function deleteFunction(id) {
+    if (confirm('确定要删除该功能吗？')) {
+        fetch('/admin/functions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=delete&id=' + id
+        }).then(function() {
+            window.location.href = '/admin/functions';
+        });
+    }
+}
+</script>
+{% end %}

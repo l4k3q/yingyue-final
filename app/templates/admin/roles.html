@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="admin-page">
+    <div class="page-header">
+        <h2>角色管理</h2>
+        <div class="header-actions">
+            <button class="layui-btn layui-btn-primary" onclick="showSearch()">
+                <i class="layui-icon layui-icon-search"></i> 搜索
+            </button>
+            <button class="layui-btn" onclick="showAddModal()">
+                <i class="layui-icon layui-icon-add-circle"></i> 新增角色
+            </button>
+        </div>
+    </div>
+
+    <div class="search-bar" id="searchBar">
+        <div class="layui-form-item">
+            <div class="layui-inline">
+                <label class="layui-form-label">关键词</label>
+                <div class="layui-input-inline">
+                    <input type="text" name="keyword" id="keyword" value="{{ keyword }}" placeholder="角色名称" class="layui-input">
+                </div>
+            </div>
+            <button class="layui-btn" onclick="doSearch()">搜索</button>
+            {% if keyword %}
+            <button class="layui-btn layui-btn-primary" onclick="clearSearch()">清除</button>
+            {% end %}
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="layui-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>角色名称</th>
+                    <th>描述</th>
+                    <th>是否默认</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for role in roles %}
+                <tr>
+                    <td>{{ role["id"] }}</td>
+                    <td>{{ role["name"] }}</td>
+                    <td>{{ role["description"] if role["description"] else "-" }}</td>
+                    <td>
+                        {% if role["is_default"] == 1 %}
+                        <span class="layui-badge layui-bg-blue">默认</span>
+                        {% else %}
+                        <span class="layui-badge">自定义</span>
+                        {% end %}
+                    </td>
+                    <td>
+                        {% if role["status"] == 1 %}
+                        <span class="layui-badge layui-bg-green">正常</span>
+                        {% else %}
+                        <span class="layui-badge layui-bg-red">禁用</span>
+                        {% end %}
+                    </td>
+                    <td>{{ role["created_at"] }}</td>
+                    <td>
+                        <button class="layui-btn layui-btn-xs" onclick="showPermissions({{ role['id'] }})">
+                            <i class="layui-icon layui-icon-set"></i> 权限配置
+                        </button>
+                        {% if role["is_default"] == 0 %}
+                        <button class="layui-btn layui-btn-xs" onclick="showEditModal({{ role['id'] }}, '{{ role['name'] }}', '{{ role['description'] if role['description'] else '' }}')">
+                            <i class="layui-icon layui-icon-edit"></i> 修改
+                        </button>
+                        <button class="layui-btn layui-btn-xs layui-btn-danger" onclick="deleteRole({{ role['id'] }})">
+                            <i class="layui-icon layui-icon-delete"></i> 删除
+                        </button>
+                        {% else %}
+                        <span class="text-gray">默认角色不可编辑</span>
+                        {% end %}
+                    </td>
+                </tr>
+                {% end %}
+                {% if not roles %}
+                <tr>
+                    <td colspan="7" class="text-center">暂无数据</td>
+                </tr>
+                {% end %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-container">
+        <div class="layui-laypage">
+            {% set pages = (total + 19) // 20 %}
+            {% if page > 1 %}
+            <a href="/admin/roles?page={{ page-1 }}&keyword={{ keyword }}">上一页</a>
+            {% end %}
+            {% for p in range(1, pages+1) %}
+            {% if p == page %}
+            <span class="layui-laypage-curr"><em>{{ p }}</em></span>
+            {% else %}
+            <a href="/admin/roles?page={{ p }}&keyword={{ keyword }}">{{ p }}</a>
+            {% end %}
+            {% end %}
+            {% if page < pages %}
+            <a href="/admin/roles?page={{ page+1 }}&keyword={{ keyword }}">下一页</a>
+            {% end %}
+            <span>共 {{ total }} 条</span>
+        </div>
+    </div>
+</div>
+
+<div class="layui-modal" id="roleModal">
+    <div class="layui-modal-content">
+        <div class="layui-modal-header">
+            <h3 id="modalTitle">新增角色</h3>
+            <button class="layui-close" onclick="closeModal()"></button>
+        </div>
+        <div class="layui-modal-body">
+            <form class="layui-form" id="roleForm">
+                <input type="hidden" name="id" id="roleId">
+                <div class="layui-form-item">
+                    <label class="layui-form-label">角色名称</label>
+                    <div class="layui-input-block">
+                        <input type="text" name="name" id="name" required lay-verify="required" placeholder="请输入角色名称" class="layui-input">
+                    </div>
+                </div>
+                <div class="layui-form-item">
+                    <label class="layui-form-label">描述</label>
+                    <div class="layui-input-block">
+                        <textarea name="description" id="description" placeholder="请输入角色描述" class="layui-textarea"></textarea>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="layui-modal-footer">
+            <button class="layui-btn layui-btn-primary" onclick="closeModal()">取消</button>
+            <button class="layui-btn" onclick="submitForm()">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function showSearch() {
+    document.getElementById('searchBar').style.display = document.getElementById('searchBar').style.display === 'none' ? 'block' : 'none';
+}
+
+function doSearch() {
+    var keyword = document.getElementById('keyword').value;
+    window.location.href = '/admin/roles?keyword=' + encodeURIComponent(keyword);
+}
+
+function clearSearch() {
+    window.location.href = '/admin/roles';
+}
+
+function showAddModal() {
+    document.getElementById('modalTitle').innerText = '新增角色';
+    document.getElementById('roleId').value = '';
+    document.getElementById('name').value = '';
+    document.getElementById('description').value = '';
+    document.getElementById('roleModal').style.display = 'block';
+}
+
+function showEditModal(id, name, description) {
+    document.getElementById('modalTitle').innerText = '修改角色';
+    document.getElementById('roleId').value = id;
+    document.getElementById('name').value = name;
+    document.getElementById('description').value = description;
+    document.getElementById('roleModal').style.display = 'block';
+}
+
+function closeModal() {
+    document.getElementById('roleModal').style.display = 'none';
+}
+
+function submitForm() {
+    var id = document.getElementById('roleId').value;
+    var action = id ? 'edit' : 'add';
+    var form = document.getElementById('roleForm');
+    var formData = new FormData(form);
+    formData.append('action', action);
+    
+    fetch('/admin/roles', {
+        method: 'POST',
+        body: formData
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (data.status === 'error') {
+            alert(data.message);
+        } else {
+            window.location.href = '/admin/roles';
+        }
+    }).catch(function() {
+        window.location.href = '/admin/roles';
+    });
+}
+
+function showPermissions(roleId) {
+    window.location.href = '/admin/roles/functions?role_id=' + roleId;
+}
+
+function deleteRole(id) {
+    if (confirm('确定要删除该角色吗？')) {
+        fetch('/admin/roles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=delete&id=' + id
+        }).then(function(response) {
+            return response.json();
+        }).then(function(data) {
+            if (data.status === 'error') {
+                alert(data.message);
+            } else {
+                window.location.href = '/admin/roles';
+            }
+        });
+    }
+}
+</script>
+{% end %}

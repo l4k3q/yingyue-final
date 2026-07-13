@@ -12,9 +12,10 @@ from app.controllers.export import ExportHandler
 from app.controllers.admin import (
     AdminLoginHandler, AdminLogoutHandler, AdminIndexHandler,
     AdminUserHandler, AdminFunctionHandler, AdminMenuHandler,
-    AdminRoleHandler, AdminWatchHandler, AdminDataHandler,
-    AdminCollectionHandler, AdminDigitalEmployeeHandler,
-    AdminModelHandler, AdminDashboardHandler, AdminSentimentHandler
+    AdminRoleHandler, AdminRoleFunctionsHandler, AdminWatchHandler,
+    AdminWatchSourceHandler, AdminDataHandler, AdminCollectionHandler,
+    AdminDigitalEmployeeHandler, AdminModelHandler, AdminModelTestHandler,
+    AdminDashboardHandler, AdminSentimentHandler
 )
 from app.models.db import init_db
 
@@ -52,11 +53,14 @@ def webapp():
         (r"/admin/functions", AdminFunctionHandler),
         (r"/admin/menus", AdminMenuHandler),
         (r"/admin/roles", AdminRoleHandler),
+        (r"/admin/roles/functions", AdminRoleFunctionsHandler),
         (r"/admin/watch", AdminWatchHandler),
+        (r"/admin/watch/source", AdminWatchSourceHandler),
         (r"/admin/data", AdminDataHandler),
         (r"/admin/collection", AdminCollectionHandler),
         (r"/admin/digital_employee", AdminDigitalEmployeeHandler),
         (r"/admin/model", AdminModelHandler),
+        (r"/admin/model/test", AdminModelTestHandler),
         (r"/admin/dashboard", AdminDashboardHandler),
         (r"/admin/sentiment", AdminSentimentHandler),
     ],

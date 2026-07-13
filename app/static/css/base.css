@@ -129,3 +129,133 @@ body {
 .gradient-primary {
     background: linear-gradient(135deg, #165DFF 0%, #0E42D2 100%);
 }
+
+.admin-page {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    padding: 20px;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.page-header h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+    margin: 0;
+}
+
+.header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.search-bar {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+.table-container {
+    margin-bottom: 20px;
+}
+
+.pagination-container {
+    text-align: right;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-gray {
+    color: #999;
+    font-size: 12px;
+}
+
+.tree-container {
+    background: #fff;
+    border-radius: 6px;
+    padding: 20px;
+    min-height: 400px;
+}
+
+.menu-container {
+    padding-bottom: 20px;
+}
+
+.layui-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+}
+
+.layui-modal.show {
+    display: flex;
+}
+
+.layui-modal-content {
+    width: 90%;
+    max-width: 500px;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.layui-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid #f0f0f0;
+    background: #fafafa;
+}
+
+.layui-modal-header h3 {
+    font-size: 16px;
+    margin: 0;
+    color: #333;
+}
+
+.layui-close {
+    width: 30px;
+    height: 30px;
+    line-height: 30px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 20px;
+    color: #999;
+}
+
+.layui-close:hover {
+    color: #666;
+}
+
+.layui-modal-body {
+    padding: 20px;
+}
+
+.layui-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 15px 20px;
+    border-top: 1px solid #f0f0f0;
+    background: #fafafa;
+}
