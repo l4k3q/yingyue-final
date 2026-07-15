@@ -1,11 +1,11 @@
-{% extends "base.html" %}
+{% extends "../admin/base.html" %}
 {% block body %}
 <style>
     .watch-container {
         display: flex;
         flex-direction: column;
-        gap: 16px;
-        height: calc(100vh - 80px);
+        gap: 12px;
+        height: calc(100vh - 50px);
         padding: 0;
     }
     
@@ -13,7 +13,7 @@
         background: #fff;
         border-radius: 12px;
         box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-        padding: 20px;
+        padding: 16px;
     }
     
     .section-title {
@@ -114,6 +114,14 @@
         border-bottom: 1px solid #EBEEF5;
     }
     
+    .source-header-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    
     .source-toggle-label {
         display: inline-flex;
         align-items: center;
@@ -133,11 +141,34 @@
     .source-toggle-desc {
         font-size: 12px;
         color: #86909C;
+        flex: 1;
+        min-width: 200px;
+    }
+    
+    .add-source-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        background: linear-gradient(135deg, #52C41A 0%, #389E0D 100%);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    
+    .add-source-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(82, 196, 26, 0.4);
     }
     
     .zone-b {
         flex-shrink: 0;
-        max-height: 200px;
+        max-height: 180px;
         overflow-y: auto;
     }
     
@@ -590,6 +621,9 @@
                 <i class="fas fa-toggle-on"></i> 瞭源开关
             </div>
             <span class="source-toggle-desc">仅"启用"中的瞭源可参与采集，可为每个瞭源单独配置采集参数</span>
+            <button class="add-source-btn" onclick="window.open('/admin/watch/source', '_blank')">
+                <i class="fas fa-plus"></i> 添加新的瞭源
+            </button>
         </div>
         <div class="source-list" id="sourceList">
             {% for source in sources %}
@@ -663,6 +697,8 @@
             </button>
         </div>
         <div class="collection-grid" id="collectionGrid">
+            <!-- DEBUG: records count = {{ len(records) if records else 0 }} -->
+            {% if records %}
             {% for record in records %}
             {% for article in record.get('articles', []) %}
             <div class="collection-card" data-source="{{ record.get('source_name', '') }}" data-keyword="{{ record.get('keyword', '') }}" data-title="{{ article.get('title', '') }}" data-url="{{ article.get('url', '') }}" data-summary="{{ article.get('summary', article.get('description', '')) }}" data-image="{{ article.get('image_url', article.get('image', '')) }}">
@@ -681,7 +717,7 @@
             </div>
             {% end %}
             {% end %}
-            {% if not records %}
+            {% else %}
             <div class="empty-state" style="grid-column: 1/-1;">
                 <div class="empty-icon"><i class="fas fa-newspaper"></i></div>
                 <div class="empty-text">暂无采集结果，请输入关键词开始采集</div>
@@ -771,6 +807,15 @@ function updateSelectAllCheckbox() {
     checkbox.checked = allSelected;
 }
 
+function getXsrfToken() {
+    var token = '';
+    var inputs = document.querySelectorAll('input[name="_xsrf"]');
+    if (inputs.length > 0) {
+        token = inputs[0].value;
+    }
+    return token;
+}
+
 function saveSelectedToWarehouse() {
     var selectedCards = document.querySelectorAll('.collection-card.selected');
     if (selectedCards.length === 0) {
@@ -793,24 +838,36 @@ function saveSelectedToWarehouse() {
         keyword = card.getAttribute('data-keyword');
     });
     
+    var xsrfToken = getXsrfToken();
+    var formData = new FormData();
+    formData.append('action', 'save_to_warehouse');
+    formData.append('articles', JSON.stringify(articles));
+    formData.append('source_name', sourceName);
+    formData.append('keyword', keyword);
+    if (xsrfToken) {
+        formData.append('_xsrf', xsrfToken);
+    }
+    
     fetch('/admin/data', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'action=save_to_warehouse&articles=' + encodeURIComponent(JSON.stringify(articles)) + 
-              '&source_name=' + encodeURIComponent(sourceName) + 
-              '&keyword=' + encodeURIComponent(keyword)
+        body: formData
     }).then(function(response) {
-        return response.json();
-    }).then(function(data) {
-        if (data.status === 'success') {
-            alert(data.message);
-            selectedCards.forEach(function(card) {
-                card.classList.remove('selected');
-            });
-            selectedArticles = [];
-            document.getElementById('selectAll').checked = false;
-        } else {
-            alert('保存失败: ' + data.message);
+        return response.text();
+    }).then(function(text) {
+        try {
+            var data = JSON.parse(text);
+            if (data.status === 'success') {
+                alert(data.message);
+                selectedCards.forEach(function(card) {
+                    card.classList.remove('selected');
+                });
+                selectedArticles = [];
+                document.getElementById('selectAll').checked = false;
+            } else {
+                alert('保存失败: ' + data.message);
+            }
+        } catch (e) {
+            alert('保存失败: ' + text);
         }
     }).catch(function(error) {
         alert('保存失败: ' + error.message);

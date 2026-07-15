@@ -1,15 +1,56 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
-    <link rel="stylesheet" type="text/css" href="{{ static_url('css/base.css') }}">
-    <script src="{{ static_url('js/base.js') }}"></script>
+    <meta name="csrf-token" content="{{ xsrf_token }}">
+    <link rel="stylesheet" type="text/css" href="{{ static_url('dist/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" type="text/css" href="{{ static_url('dist/layui/css/layui.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            min-height: 100vh;
+        }
+        .app-container {
+            min-height: 100vh;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+        .success {
+            color: #155724;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+        @media (max-width: 768px) {
+            .app-container {
+                padding: 10px;
+            }
+        }
+    </style>
+    {% block head %}{% end %}
 </head>
 <body>
-    <div class="container">
-        {% block body %}{% end %}
-    </div>
+    {% block body %}{% end %}
+    <script src="{{ static_url('dist/layui/layui.js') }}"></script>
+    <script src="{{ static_url('dist/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    {% block script %}{% end %}
 </body>
 </html>

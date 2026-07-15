@@ -153,6 +153,18 @@ class WatchRecordRepository:
             )
 
     @staticmethod
+    def get_stats():
+        with get_connection() as conn:
+            cursor = conn.execute(
+                """SELECT COUNT(*) as total,
+                   SUM(CASE WHEN status=1 THEN 1 ELSE 0 END) as success,
+                   SUM(CASE WHEN status=0 THEN 1 ELSE 0 END) as failed
+                   FROM watch_records"""
+            )
+            row = cursor.fetchone()
+        return dict(row) if row else {"total": 0, "success": 0, "failed": 0}
+
+    @staticmethod
     def delete_record(record_id: int):
         with get_connection() as conn:
             conn.execute("DELETE FROM watch_records WHERE id=?", (record_id,))

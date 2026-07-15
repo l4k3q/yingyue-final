@@ -1,15 +1,1071 @@
-{% extends "base.html" %}
-{% block body %}
-<div>
-    <h2>用户首页</h2>
-    <form method="post" action="??">
-        {% module xsrf_form_html() %}
-        <button type="submit">退出</button>
-    </form>
-</div>
-
-<div>
-    当前登录用户：{{ username }}
-</div>
-
-{% end %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" type="text/css" href="{{ static_url('dist/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+        .sidebar {
+            width: 280px;
+            background-color: #ffffff;
+            border-right: 1px solid #e5e7eb;
+            display: flex;
+            flex-direction: column;
+            transition: width 0.3s;
+        }
+        .sidebar.collapsed {
+            width: 60px;
+        }
+        .logo-section {
+            padding: 24px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .logo-box {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .logo-box i {
+            font-size: 20px;
+            color: #fff;
+        }
+        .logo-text h2 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1f2937;
+            margin: 0;
+        }
+        .logo-text p {
+            font-size: 12px;
+            color: #9ca3af;
+            margin: 2px 0 0 0;
+        }
+        .model-section {
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .model-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .model-select {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 14px;
+            background-color: #f9fafb;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+        }
+        .model-select:hover {
+            border-color: #2563eb;
+            background-color: #fff;
+        }
+        .model-select:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+            background-color: #fff;
+        }
+        .task-section {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+        }
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .task-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+        }
+        .new-chat-btn {
+            width: 28px;
+            height: 28px;
+            background-color: #2563eb;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+        .new-chat-btn:hover {
+            background-color: #1d4ed8;
+        }
+        .task-list {
+            list-style: none;
+        }
+        .task-item {
+            padding: 12px 14px;
+            margin-bottom: 6px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        .task-item:hover {
+            background-color: #f3f4f6;
+        }
+        .task-item.active {
+            background-color: #eff6ff;
+            border-left: 3px solid #2563eb;
+        }
+        .task-icon {
+            width: 28px;
+            height: 28px;
+            background-color: #e5e7eb;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .task-icon i {
+            font-size: 14px;
+            color: #6b7280;
+        }
+        .task-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .task-name {
+            font-size: 13px;
+            color: #374151;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .task-time {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 2px;
+        }
+        .delete-task-btn {
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: none;
+            color: #9ca3af;
+            cursor: pointer;
+            opacity: 0;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .task-item:hover .delete-task-btn {
+            opacity: 1;
+        }
+        .delete-task-btn:hover {
+            color: #dc2626;
+        }
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #f5f7fa;
+        }
+        .header-bar {
+            padding: 16px 24px;
+            background-color: #ffffff;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            background-color: #f3f4f6;
+            border-radius: 20px;
+        }
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .user-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+        }
+        .logout-btn {
+            padding: 8px 16px;
+            background-color: #f3f4f6;
+            border: none;
+            border-radius: 8px;
+            color: #6b7280;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover {
+            background-color: #e5e7eb;
+            color: #374151;
+        }
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #9ca3af;
+        }
+        .empty-icon {
+            width: 80px;
+            height: 80px;
+            background-color: #f3f4f6;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .empty-icon i {
+            font-size: 40px;
+            color: #2563eb;
+            opacity: 0.6;
+        }
+        .empty-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+        .empty-desc {
+            font-size: 14px;
+            color: #6b7280;
+            text-align: center;
+            max-width: 400px;
+        }
+        .message {
+            display: flex;
+            gap: 12px;
+        }
+        .message.user {
+            justify-content: flex-end;
+        }
+        .message.user .message-content {
+            background-color: #2563eb;
+            color: #fff;
+            border-radius: 18px 18px 4px 18px;
+        }
+        .message.assistant {
+            justify-content: flex-start;
+        }
+        .message.assistant .message-content {
+            background-color: #ffffff;
+            color: #374151;
+            border-radius: 18px 18px 18px 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .message.assistant .message-avatar {
+            background-color: #2563eb;
+        }
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+            background-color: #e5e7eb;
+        }
+        .message-avatar i {
+            font-size: 16px;
+            color: #fff;
+        }
+        .message-content {
+            max-width: 70%;
+            padding: 14px 18px;
+            font-size: 15px;
+            line-height: 1.6;
+            word-wrap: break-word;
+        }
+        .typing-indicator {
+            display: flex;
+            gap: 12px;
+        }
+        .typing-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+            background-color: #2563eb;
+        }
+        .typing-avatar i {
+            font-size: 16px;
+            color: #fff;
+        }
+        .typing-box {
+            background-color: #ffffff;
+            padding: 14px 18px;
+            border-radius: 18px 18px 18px 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .typing-dots {
+            display: flex;
+            gap: 6px;
+        }
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #2563eb;
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out both;
+        }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        .input-area {
+            padding: 16px 24px;
+            background-color: #ffffff;
+            border-top: 1px solid #e5e7eb;
+        }
+        .input-container {
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+        }
+        .input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            background-color: #f5f7fa;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 24px;
+            transition: all 0.2s;
+        }
+        .input-wrapper:focus-within {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+            background-color: #fff;
+        }
+        .quick-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .quick-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: none;
+            color: #9ca3af;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        .quick-btn:hover {
+            background-color: #e5e7eb;
+            color: #374151;
+        }
+        .chat-input {
+            flex: 1;
+            border: none;
+            background: none;
+            font-size: 15px;
+            padding: 8px 0;
+            outline: none;
+            color: #374151;
+        }
+        .chat-input::placeholder {
+            color: #9ca3af;
+        }
+        .send-btn {
+            width: 36px;
+            height: 36px;
+            background-color: #2563eb;
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.2s;
+        }
+        .send-btn:hover {
+            background-color: #1d4ed8;
+            transform: scale(1.05);
+        }
+        .send-btn:disabled {
+            background-color: #d1d5db;
+            cursor: not-allowed;
+        }
+        .quick-menu {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            background-color: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            padding: 8px;
+            min-width: 280px;
+            display: none;
+            z-index: 100;
+        }
+        .quick-menu.show {
+            display: block;
+        }
+        .quick-menu-header {
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #9ca3af;
+            border-bottom: 1px solid #f0f0f0;
+            margin-bottom: 4px;
+        }
+        .quick-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .quick-menu-item:hover {
+            background-color: #f3f4f6;
+        }
+        .quick-menu-icon {
+            width: 32px;
+            height: 32px;
+            background-color: #e5e7eb;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .quick-menu-icon i {
+            font-size: 16px;
+            color: #6b7280;
+        }
+        .quick-menu-info {
+            flex: 1;
+        }
+        .quick-menu-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+        }
+        .quick-menu-desc {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 2px;
+        }
+        .divider {
+            height: 1px;
+            background-color: #f0f0f0;
+            margin: 8px 0;
+        }
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100%;
+                z-index: 1000;
+                transform: translateX(-100%);
+                transition: transform 0.3s;
+            }
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            .sidebar-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-color: rgba(0,0,0,0.5);
+                z-index: 999;
+                display: none;
+            }
+            .sidebar-overlay.show {
+                display: block;
+            }
+            .menu-toggle {
+                display: block !important;
+            }
+            .message-content {
+                max-width: 85%;
+            }
+        }
+        .menu-toggle {
+            display: none;
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: none;
+            color: #374151;
+            cursor: pointer;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    
+    <div class="app-container">
+        <div class="sidebar" id="sidebar">
+            <div class="logo-section">
+                <div class="logo-box">
+                    <i class="fas fa-chart-bar"></i>
+                </div>
+                <div class="logo-text">
+                    <h2>智能问数系统</h2>
+                    <p>DataFinder</p>
+                </div>
+            </div>
+            
+            <div class="model-section">
+                <div class="model-label">
+                    <i class="fas fa-cpu"></i>
+                    <span>模型选择</span>
+                </div>
+                <select class="model-select" id="modelSelect">
+                    <option value="default">默认模型</option>
+                </select>
+            </div>
+            
+            <div class="task-section">
+                <div class="task-header">
+                    <span class="task-title">对话历史</span>
+                    <button class="new-chat-btn" id="newChatBtn" title="新对话">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+                <ul class="task-list" id="taskList">
+                </ul>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="header-bar">
+                <div class="header-actions">
+                    <button class="menu-toggle" id="menuToggle">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <span class="header-title" id="chatTitle">新对话</span>
+                </div>
+                <div class="header-actions">
+                    <div class="user-info">
+                        <div class="user-avatar">{{ username[0].upper() if username else 'U' }}</div>
+                        <span class="user-name">{{ username }}</span>
+                    </div>
+                    <form action="/logout" method="post">
+                        {% module xsrf_form_html() %}
+                        <button type="submit" class="logout-btn">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="chat-area" id="chatArea">
+                <div class="empty-state" id="emptyState">
+                    <div class="empty-icon">
+                        <i class="fas fa-comments"></i>
+                    </div>
+                    <div class="empty-title">欢迎使用智能问数系统</div>
+                    <div class="empty-desc">您可以直接输入问题进行智能问数，也可以 @数字员工 获取特定服务。<br>例如：@天气 成都，@新闻，@川哥</div>
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <div class="input-container">
+                    <div class="quick-menu" id="quickMenu">
+                        <div class="quick-menu-header" id="quickMenuHeader">快捷操作</div>
+                        <div id="quickMenuContent"></div>
+                    </div>
+                    
+                    <div class="input-wrapper">
+                        <div class="quick-actions">
+                            <button class="quick-btn" id="slashBtn" title="快捷功能">
+                                <i class="fas fa-slash"></i>
+                            </button>
+                            <button class="quick-btn" id="atBtn" title="数字员工">
+                                <i class="fas fa-at"></i>
+                            </button>
+                        </div>
+                        <input type="text" class="chat-input" id="chatInput" placeholder="输入消息，或使用 / 和 @ 快捷操作...">
+                        <button class="send-btn" id="sendBtn" disabled>
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat`;
+        
+        let ws;
+        let currentConversationId = null;
+        
+        const chatArea = document.getElementById('chatArea');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const emptyState = document.getElementById('emptyState');
+        const taskList = document.getElementById('taskList');
+        const chatTitle = document.getElementById('chatTitle');
+        const newChatBtn = document.getElementById('newChatBtn');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+        const menuToggle = document.getElementById('menuToggle');
+        const quickMenu = document.getElementById('quickMenu');
+        const quickMenuContent = document.getElementById('quickMenuContent');
+        const quickMenuHeader = document.getElementById('quickMenuHeader');
+        const slashBtn = document.getElementById('slashBtn');
+        const atBtn = document.getElementById('atBtn');
+        
+        const digitalEmployees = [];
+        
+        function initWebSocket() {
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                console.log('WebSocket 连接成功');
+                loadConversations();
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                switch (data.type) {
+                    case 'typing':
+                        showTyping(data.data);
+                        break;
+                    case 'stream':
+                        appendMessage('assistant', data.data);
+                        break;
+                    case 'chart':
+                        appendChartMessage(data.data);
+                        break;
+                    case 'metadata':
+                        updateLastMessageMetadata(data.data);
+                        break;
+                    case 'done':
+                        removeTyping();
+                        break;
+                    case 'error':
+                        showError(data.data);
+                        break;
+                    case 'messages_loaded':
+                        loadMessages(data.data);
+                        break;
+                    case 'conversation_created':
+                        currentConversationId = data.data.conversation_id;
+                        chatTitle.textContent = '新对话';
+                        clearMessages();
+                        loadConversations();
+                        break;
+                    case 'conversation_deleted':
+                        loadConversations();
+                        if (currentConversationId === data.data) {
+                            currentConversationId = null;
+                            chatTitle.textContent = '新对话';
+                            clearMessages();
+                        }
+                        break;
+                }
+            };
+            
+            ws.onclose = function() {
+                console.log('WebSocket 连接关闭，5秒后重连');
+                setTimeout(initWebSocket, 5000);
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket 错误:', error);
+            };
+        }
+        
+        function loadConversations() {
+            fetch('/api/conversations')
+                .then(response => response.json())
+                .then(data => {
+                    taskList.innerHTML = '';
+                    data.conversations.forEach(conv => {
+                        const li = document.createElement('li');
+                        li.className = 'task-item' + (currentConversationId === conv.id ? ' active' : '');
+                        li.innerHTML = `
+                            <div class="task-icon">
+                                <i class="fas fa-comment"></i>
+                            </div>
+                            <div class="task-content">
+                                <div class="task-name">${conv.title}</div>
+                                <div class="task-time">${conv.created_at}</div>
+                            </div>
+                            <button class="delete-task-btn" onclick="deleteConversation(${conv.id})">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        `;
+                        li.addEventListener('click', () => loadConversation(conv.id));
+                        taskList.appendChild(li);
+                    });
+                })
+                .catch(error => console.error('加载对话列表失败:', error));
+        }
+        
+        function loadConversation(conversationId) {
+            currentConversationId = conversationId;
+            ws.send(JSON.stringify({ type: 'load_conversation', conversation_id: conversationId }));
+            document.querySelectorAll('.task-item').forEach(item => item.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+        }
+        
+        function deleteConversation(conversationId) {
+            if (confirm('确定要删除这个对话吗？')) {
+                ws.send(JSON.stringify({ type: 'delete_conversation', conversation_id: conversationId }));
+            }
+        }
+        
+        function loadMessages(messages) {
+            clearMessages();
+            messages.forEach(msg => {
+                appendMessage(msg.role, msg.content);
+            });
+        }
+        
+        function clearMessages() {
+            chatArea.innerHTML = '';
+        }
+        
+        function appendMessage(role, content) {
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const avatar = role === 'assistant' 
+                ? `<div class="message-avatar"><i class="fas fa-robot"></i></div>`
+                : `<div class="message-avatar" style="background-color:#e5e7eb"><i class="fas fa-user" style="color:#6b7280"></i></div>`;
+            
+            const isHtml = content.includes('<div') || content.includes('<span') || content.includes('<h') || content.includes('<table');
+            
+            messageDiv.innerHTML = `
+                ${avatar}
+                <div class="message-content">
+                    ${isHtml ? content : content.replace(/\n/g, '<br>')}
+                </div>
+                <div class="message-metadata"></div>
+            `;
+            
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        function updateLastMessageMetadata(metadata) {
+            const messages = chatArea.querySelectorAll('.message');
+            if (messages.length === 0) return;
+            
+            const lastMessage = messages[messages.length - 1];
+            const metadataDiv = lastMessage.querySelector('.message-metadata');
+            if (metadataDiv) {
+                metadataDiv.innerHTML = `
+                    <span style="color:#9ca3af;font-size:12px;margin-right:12px;">响应时间: ${metadata.time}s</span>
+                    <span style="color:#9ca3af;font-size:12px;">Token: ${metadata.tokens}</span>
+                `;
+            }
+        }
+        
+        function appendChartMessage(chartData) {
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
+            
+            const chartId = 'chart-' + Date.now();
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+            
+            messageDiv.innerHTML = `
+                <div class="message-avatar"><i class="fas fa-chart-bar"></i></div>
+                <div class="message-content">
+                    <div id="${chartId}" style="width: 100%; height: 400px;"></div>
+                </div>
+                <div class="message-metadata"></div>
+            `;
+            
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+            
+            setTimeout(() => {
+                const chartDom = document.getElementById(chartId);
+                if (chartDom) {
+                    const myChart = echarts.init(chartDom);
+                    myChart.setOption(chartData.option);
+                    
+                    window.addEventListener('resize', function() {
+                        myChart.resize();
+                    });
+                }
+            }, 100);
+        }
+        
+        function showTyping(text) {
+            removeTyping();
+            
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'typing-indicator';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = `
+                <div class="typing-avatar"><i class="fas fa-robot"></i></div>
+                <div class="typing-box">
+                    <div class="typing-dots">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                </div>
+            `;
+            
+            chatArea.appendChild(typingDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        function removeTyping() {
+            const typing = document.getElementById('typingIndicator');
+            if (typing) {
+                typing.remove();
+            }
+        }
+        
+        function showError(error) {
+            appendMessage('assistant', `<span style="color:#dc2626">${error}</span>`);
+        }
+        
+        function sendMessage() {
+            const content = chatInput.value.trim();
+            if (!content) return;
+            
+            appendMessage('user', content);
+            chatInput.value = '';
+            sendBtn.disabled = true;
+            
+            ws.send(JSON.stringify({ type: 'message', data: content }));
+        }
+        
+        function newConversation() {
+            ws.send(JSON.stringify({ type: 'new_conversation' }));
+        }
+        
+        function toggleQuickMenu(type) {
+            quickMenuContent.innerHTML = '';
+            
+            if (type === 'slash') {
+                quickMenuHeader.textContent = '快捷功能';
+                const commands = [
+                    { icon: 'fa-file-text', title: '生成报告', desc: '生成数据分析报告' },
+                    { icon: 'fa-chart-bar', title: '数据图表', desc: '生成可视化图表' },
+                    { icon: 'fa-download', title: '导出数据', desc: '导出当前数据' },
+                    { icon: 'fa-history', title: '历史记录', desc: '查看历史对话记录' },
+                ];
+                commands.forEach(cmd => {
+                    const item = document.createElement('div');
+                    item.className = 'quick-menu-item';
+                    item.innerHTML = `
+                        <div class="quick-menu-icon"><i class="fas ${cmd.icon}"></i></div>
+                        <div class="quick-menu-info">
+                            <div class="quick-menu-title">${cmd.title}</div>
+                            <div class="quick-menu-desc">${cmd.desc}</div>
+                        </div>
+                    `;
+                    item.addEventListener('click', () => {
+                        chatInput.value = `/${cmd.title.split(' ')[0].toLowerCase()} `;
+                        chatInput.focus();
+                        quickMenu.classList.remove('show');
+                    });
+                    quickMenuContent.appendChild(item);
+                });
+            } else {
+                quickMenuHeader.textContent = '数字员工';
+                if (digitalEmployees.length === 0) {
+                    fetch('/api/digital_employees')
+                        .then(response => response.json())
+                        .then(data => {
+                            digitalEmployees.push(...data.employees);
+                            renderEmployeeMenu();
+                        })
+                        .catch(() => {
+                            quickMenuContent.innerHTML = '<div style="padding:12px;color:#9ca3af;">暂无数字员工</div>';
+                        });
+                } else {
+                    renderEmployeeMenu();
+                }
+            }
+            
+            quickMenu.classList.toggle('show');
+        }
+        
+        function renderEmployeeMenu() {
+            quickMenuContent.innerHTML = '';
+            if (digitalEmployees.length === 0) {
+                quickMenuContent.innerHTML = '<div style="padding:12px;color:#9ca3af;">暂无数字员工</div>';
+                return;
+            }
+            
+            digitalEmployees.forEach(emp => {
+                const item = document.createElement('div');
+                item.className = 'quick-menu-item';
+                item.innerHTML = `
+                    <div class="quick-menu-icon"><i class="fas fa-user"></i></div>
+                    <div class="quick-menu-info">
+                        <div class="quick-menu-title">@${emp.name}</div>
+                        <div class="quick-menu-desc">${emp.description || emp.name}</div>
+                    </div>
+                `;
+                item.addEventListener('click', () => {
+                    chatInput.value = `@${emp.name} `;
+                    chatInput.focus();
+                    quickMenu.classList.remove('show');
+                });
+                quickMenuContent.appendChild(item);
+            });
+        }
+        
+        chatInput.addEventListener('input', function() {
+            sendBtn.disabled = !this.value.trim();
+        });
+        
+        chatInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        sendBtn.addEventListener('click', sendMessage);
+        newChatBtn.addEventListener('click', newConversation);
+        
+        menuToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('show');
+            sidebarOverlay.classList.toggle('show');
+        });
+        
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.remove('show');
+        });
+        
+        slashBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleQuickMenu('slash');
+        });
+        
+        atBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleQuickMenu('at');
+        });
+        
+        document.addEventListener('click', (e) => {
+            if (!quickMenu.contains(e.target) && !slashBtn.contains(e.target) && !atBtn.contains(e.target)) {
+                quickMenu.classList.remove('show');
+            }
+        });
+        
+        chatInput.addEventListener('input', (e) => {
+            const val = e.target.value;
+            if (val.endsWith(' /')) {
+                toggleQuickMenu('slash');
+            } else if (val.endsWith(' @')) {
+                toggleQuickMenu('at');
+            }
+        });
+        
+        initWebSocket();
+        loadConversations();
+    </script>
+</body>
+</html>

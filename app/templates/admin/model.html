@@ -1,5 +1,6 @@
-{% extends "base.html" %}
+{% extends "../admin/base.html" %}
 {% block body %}
+<div style="display:none;">{% module xsrf_form_html() %}</div>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
     :root {
@@ -866,7 +867,7 @@
                 </div>
                 <div class="form-group">
                     <label>API Key *</label>
-                    <input type="password" id="api_key" required placeholder="sk-...">
+                    <input type="password" id="api_key" required placeholder="如需修改请输入新的API Key">
                 </div>
                 <div class="form-group">
                     <label>Base URL *</label>
@@ -936,6 +937,26 @@
 {% block script %}
 <script>
 var currentModelId = null;
+function getXsrfToken() {
+    var token = '';
+    var inputs = document.querySelectorAll('input[name="_xsrf"]');
+    if (inputs.length > 0) {
+        token = inputs[0].value;
+    }
+    return token;
+}
+
+function getFetchOptions(params) {
+    params._xsrf = getXsrfToken();
+    return {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-XSRFToken': getXsrfToken()
+        },
+        body: new URLSearchParams(params)
+    };
+}
 
 function openAddModal() {
     document.getElementById('modalTitle').textContent = '添加模型';
@@ -947,11 +968,8 @@ function openAddModal() {
 
 function openEditModal(id) {
     currentModelId = id;
-    fetch('/admin/model', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ action: 'get', id: id })
-    }).then(r => r.json()).then(data => {
+    fetch('/admin/model', getFetchOptions({ action: 'get', id: id }))
+        .then(r => r.json()).then(data => {
         if (data) {
             document.getElementById('modalTitle').textContent = '编辑模型';
             document.getElementById('modelId').value = data.id;
@@ -998,11 +1016,8 @@ function submitForm() {
         provider: document.getElementById('provider').value
     };
     
-    fetch('/admin/model', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams(formData)
-    }).then(r => r.json()).then(data => {
+    fetch('/admin/model', getFetchOptions(formData))
+        .then(r => r.json()).then(data => {
         if (data.status === 'success') {
             closeModal();
             location.reload();
@@ -1014,11 +1029,8 @@ function submitForm() {
 
 function deleteModel(id) {
     if (confirm('确定要删除这个模型吗？')) {
-        fetch('/admin/model', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ action: 'delete', id: id })
-        }).then(r => r.json()).then(data => {
+        fetch('/admin/model', getFetchOptions({ action: 'delete', id: id }))
+            .then(r => r.json()).then(data => {
             if (data.status === 'success') {
                 location.reload();
             }
@@ -1028,11 +1040,8 @@ function deleteModel(id) {
 
 function setDefault(id) {
     if (confirm('确定要将此模型设为默认模型吗？')) {
-        fetch('/admin/model', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ action: 'set_default', id: id })
-        }).then(r => r.json()).then(data => {
+        fetch('/admin/model', getFetchOptions({ action: 'set_default', id: id }))
+            .then(r => r.json()).then(data => {
             if (data.status === 'success') {
                 location.reload();
             }

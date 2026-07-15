@@ -154,6 +154,71 @@ def init_db():
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS digital_employees(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                code_name TEXT NOT NULL UNIQUE,
+                type INTEGER NOT NULL DEFAULT 1,
+                model_id INTEGER DEFAULT 0,
+                prompt TEXT,
+                skills TEXT,
+                use_crawl4ai INTEGER NOT NULL DEFAULT 0,
+                api_url TEXT,
+                api_method TEXT DEFAULT 'GET',
+                api_headers TEXT,
+                api_params TEXT,
+                api_body TEXT,
+                card_template TEXT,
+                description TEXT,
+                status INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
+        try:
+            conn.execute("ALTER TABLE digital_employees ADD COLUMN card_template TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE digital_employees ADD COLUMN md_files_path TEXT")
+        except sqlite3.OperationalError:
+            pass
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS deep_collect_tasks(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                record_id INTEGER NOT NULL,
+                employee_id INTEGER DEFAULT 0,
+                employee_name TEXT,
+                status INTEGER NOT NULL DEFAULT 0,
+                progress INTEGER NOT NULL DEFAULT 0,
+                step TEXT DEFAULT '',
+                log TEXT DEFAULT '',
+                result TEXT DEFAULT '',
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (record_id) REFERENCES data_warehouse(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversations(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                title TEXT DEFAULT '',
+                messages TEXT DEFAULT '',
+                status INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
         cursor = conn.execute("SELECT COUNT(*) FROM admins WHERE username='admin'")
         count = cursor.fetchone()[0]
         if count == 0:
@@ -239,4 +304,78 @@ def init_db():
             conn.execute(
                 "INSERT INTO watch_sources (name, url, request_headers, params, status, description) VALUES (?,?,?,?,?,?)",
                 ("百度新闻", "https://www.baidu.com/s", json.dumps(baidu_headers), json.dumps(baidu_params), 1, "百度新闻搜索接口，支持关键词搜索和分页")
+            )
+        
+        cursor = conn.execute("SELECT COUNT(*) FROM ai_models")
+        count = cursor.fetchone()[0]
+        if count == 0:
+            conn.execute(
+                """INSERT INTO ai_models (name, model_id, api_key, base_url, temperature, max_tokens, is_default, status, description, provider) 
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                ("DeepSeek Free", "deepseek-chat", "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "https://api.deepseek.com/v1", 0.7, 4096, 1, 1, "DeepSeek免费大模型服务", "openai")
+            )
+        
+        cursor = conn.execute("SELECT COUNT(*) FROM digital_employees")
+        count = cursor.fetchone()[0]
+        if count == 0:
+            weather_card = """<div class="weather-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 16px; padding: 20px; color: #fff; min-width: 280px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <div style="font-size: 24px; font-weight: 600;">{location}</div>
+                        <div style="font-size: 14px; opacity: 0.8; margin-top: 4px;">{date}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 48px; font-weight: 700;">{temp}</div>
+                        <div style="font-size: 14px;">{condition}</div>
+                    </div>
+                </div>
+                <div style="margin-top: 16px; display: flex; justify-content: space-around; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 12px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 12px; opacity: 0.8;">湿度</div>
+                        <div style="font-size: 16px; font-weight: 500;">{humidity}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 12px; opacity: 0.8;">风力</div>
+                        <div style="font-size: 16px; font-weight: 500;">{wind}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 12px; opacity: 0.8;">能见度</div>
+                        <div style="font-size: 16px; font-weight: 500;">{visibility}</div>
+                    </div>
+                </div>
+            </div>"""
+            
+            news_card = """<div class="news-card" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; background: #fff;">
+                <h4 style="font-size: 16px; font-weight: 600; color: #1f2937; margin-bottom: 12px;">📰 最新新闻</h4>
+                <div>{news_list}</div>
+            </div>"""
+            
+            conn.execute(
+                """INSERT INTO digital_employees (name, code_name, type, api_url, api_method, api_params, card_template, description) 
+                VALUES (?,?,?,?,?,?,?,?)""",
+                ("天气", "weather", 2, "https://wttr.in/{city}?format=j1", "GET", '{"city": "Beijing"}', weather_card, "查询指定城市天气信息")
+            )
+            
+            conn.execute(
+                """INSERT INTO digital_employees (name, code_name, type, model_id, prompt, description) 
+                VALUES (?,?,?,?,?,?)""",
+                ("新闻", "news", 1, 1, "你是一个新闻助手，请为用户提供最新的新闻资讯。用户查询: {query}", "获取最新新闻资讯")
+            )
+            
+            conn.execute(
+                """INSERT INTO digital_employees (name, code_name, type, model_id, prompt, description) 
+                VALUES (?,?,?,?,?,?)""",
+                ("川哥", "chuange", 1, 1, "你是川哥，一位幽默风趣的AI助手，擅长聊天和解答各种问题。用户输入: {query}", "与川哥聊天互动")
+            )
+            
+            conn.execute(
+                """INSERT INTO digital_employees (name, code_name, type, model_id, prompt, description) 
+                VALUES (?,?,?,?,?,?)""",
+                ("电影", "movie", 1, 1, "你是一个电影推荐助手，请为用户推荐电影。用户查询: {query}", "电影推荐和查询")
+            )
+            
+            conn.execute(
+                """INSERT INTO digital_employees (name, code_name, type, model_id, prompt, description) 
+                VALUES (?,?,?,?,?,?)""",
+                ("采集专员", "collector", 1, 1, "你是采集专员，负责网页内容深度采集。URL: {url}", "网页内容深度采集")
             )

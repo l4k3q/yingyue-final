@@ -1,0 +1,805 @@
+{% extends "../admin/base.html" %}
+{% block body %}
+<div style="display:none;">{% module xsrf_form_html() %}</div>
+<style>
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .page-header h2 {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        margin: 0;
+    }
+
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .stat-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 8px;
+        padding: 20px;
+        color: #fff;
+        text-align: center;
+    }
+
+    .stat-card:nth-child(2) { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .stat-card:nth-child(3) { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+    .stat-card:nth-child(4) { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+
+    .stat-value {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+
+    .stat-label {
+        font-size: 12px;
+        opacity: 0.9;
+    }
+
+    .search-bar {
+        background: #f9f9f9;
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .type-badge {
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .type-badge.llm { background: #E8F0FF; color: #165DFF; }
+    .type-badge.api { background: #E8F8E6; color: #52C41A; }
+
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .status-badge.active { background: #E8F8E6; color: #52C41A; }
+    .status-badge.inactive { background: #F5F5F5; color: #999; }
+
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 9999;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+    }
+
+    .modal-overlay.show { display: flex; }
+
+    .modal-content {
+        background: #fff;
+        border-radius: 8px;
+        width: 100%;
+        max-width: 800px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 20px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .modal-header h3 {
+        font-size: 16px;
+        margin: 0;
+        color: #333;
+    }
+
+    .modal-close {
+        width: 30px;
+        height: 30px;
+        line-height: 30px;
+        text-align: center;
+        cursor: pointer;
+        font-size: 20px;
+        color: #999;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 13px;
+        color: #333;
+        margin-bottom: 6px;
+        font-weight: 500;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #e6e6e6;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        border-color: #165DFF;
+        outline: none;
+    }
+
+    .form-group textarea {
+        min-height: 100px;
+        resize: vertical;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+
+    .type-section {
+        display: none;
+        padding: 16px;
+        background: #f9f9f9;
+        border-radius: 6px;
+        margin-top: 12px;
+    }
+
+    .type-section.active {
+        display: block;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 15px 20px;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .btn {
+        padding: 8px 20px;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+    }
+
+    .btn-primary {
+        background: #165DFF;
+        color: #fff;
+    }
+
+    .btn-primary:hover {
+        background: #0E42D2;
+    }
+
+    .btn-default {
+        background: #f5f5f5;
+        color: #666;
+    }
+
+    .btn-default:hover {
+        background: #e6e6e6;
+    }
+
+    .btn-danger {
+        background: #F56C6C;
+        color: #fff;
+    }
+
+    .btn-danger:hover {
+        background: #E84D4D;
+    }
+
+    .btn-xs {
+        padding: 4px 10px;
+        font-size: 12px;
+    }
+
+    .test-result {
+        margin-top: 16px;
+        padding: 12px;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 13px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .test-result.success {
+        background: #E8F8E6;
+        color: #52C41A;
+    }
+
+    .test-result.error {
+        background: #FEF0F0;
+        color: #F56C6C;
+    }
+
+    .table-container {
+        overflow-x: auto;
+    }
+
+    .layui-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .layui-table th,
+    .layui-table td {
+        padding: 12px 16px;
+        text-align: left;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .layui-table th {
+        background: #f9f9f9;
+        font-weight: 600;
+        color: #333;
+    }
+
+    .layui-table tr:hover {
+        background: #fafafa;
+    }
+
+    .pagination-container {
+        text-align: right;
+        margin-top: 20px;
+    }
+
+    .layui-laypage {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .layui-laypage a,
+    .layui-laypage span {
+        padding: 6px 12px;
+        border-radius: 4px;
+        text-decoration: none;
+        color: #666;
+    }
+
+    .layui-laypage a:hover {
+        color: #165DFF;
+    }
+
+    .layui-laypage-curr {
+        background: #165DFF;
+        color: #fff;
+    }
+
+    .layui-laypage-curr em {
+        font-style: normal;
+        color: #fff;
+    }
+</style>
+
+<div class="admin-page">
+    <div class="page-header">
+        <h2>数字员工管理</h2>
+        <button class="btn btn-primary" onclick="openAddModal()">
+            <i class="fas fa-plus"></i> 新增数字员工
+        </button>
+    </div>
+
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.get('total', 0) }}</div>
+            <div class="stat-label">总员工数</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.get('llm_count', 0) }}</div>
+            <div class="stat-label">LLM类型</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.get('api_count', 0) }}</div>
+            <div class="stat-label">API类型</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.get('active_count', 0) }}</div>
+            <div class="stat-label">启用中</div>
+        </div>
+    </div>
+
+    <div class="search-bar">
+        <div>
+            <label style="font-size: 13px; color: #666; margin-right: 8px;">类型筛选:</label>
+            <select onchange="filterByType(this.value)" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #e6e6e6;">
+                <option value="0" {% if type == 0 %}selected{% end %}>全部</option>
+                <option value="1" {% if type == 1 %}selected{% end %}>LLM类型</option>
+                <option value="2" {% if type == 2 %}selected{% end %}>API类型</option>
+            </select>
+        </div>
+        <div style="flex: 1; max-width: 300px;">
+            <input type="text" id="keywordInput" value="{{ keyword }}" placeholder="搜索名称、代号、描述..." 
+                   style="width: 100%; padding: 8px 12px; border-radius: 4px; border: 1px solid #e6e6e6;">
+        </div>
+        <button class="btn btn-primary btn-xs" onclick="doSearch()">搜索</button>
+        {% if keyword %}
+        <button class="btn btn-default btn-xs" onclick="clearSearch()">清除</button>
+        {% end %}
+    </div>
+
+    <div class="table-container">
+        <table class="layui-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>名称</th>
+                    <th>代号</th>
+                    <th>类型</th>
+                    <th>模型/API</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for employee in employees %}
+                <tr>
+                    <td>{{ employee["id"] }}</td>
+                    <td>{{ employee["name"] }}</td>
+                    <td>@{{ employee["code_name"] }}</td>
+                    <td>
+                        <span class="type-badge {% if employee['type'] == 1 %}llm{% else %}api{% end %}">
+                            {{ 'LLM类型' if employee['type'] == 1 else 'API类型' }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if employee['type'] == 1 %}
+                            {% if employee['model_id'] > 0 %}
+                                {% for m in models %}
+                                    {% if m['id'] == employee['model_id'] %}
+                                        {{ m['name'] }}
+                                    {% end %}
+                                {% end %}
+                            {% else %}
+                                默认模型
+                            {% end %}
+                        {% else %}
+                            {{ employee['api_url'][:30] }}{% if len(employee['api_url']) > 30 %}...{% end %}
+                        {% end %}
+                    </td>
+                    <td>
+                        <span class="status-badge {% if employee['status'] == 1 %}active{% else %}inactive{% end %}">
+                            {{ '启用' if employee['status'] == 1 else '禁用' }}
+                        </span>
+                    </td>
+                    <td>{{ employee["created_at"][:16] }}</td>
+                    <td>
+                        <button class="btn btn-default btn-xs" onclick="viewEmployee({{ employee['id'] }})">查看</button>
+                        <button class="btn btn-primary btn-xs" onclick="editEmployee({{ employee['id'] }})">编辑</button>
+                        <button class="btn {% if employee['status'] == 1 %}btn-default{% else %}btn-primary{% end %} btn-xs" 
+                                onclick="toggleEmployee({{ employee['id'] }}, {{ 0 if employee['status'] == 1 else 1 }})">
+                            {{ '禁用' if employee['status'] == 1 else '启用' }}
+                        </button>
+                        <button class="btn btn-danger btn-xs" onclick="deleteEmployee({{ employee['id'] }})">删除</button>
+                        <button class="btn btn-default btn-xs" onclick="testEmployee({{ employee['id'] }})">测试</button>
+                    </td>
+                </tr>
+                {% end %}
+                {% if not employees %}
+                <tr>
+                    <td colspan="8" style="text-align: center; color: #999;">暂无数字员工数据</td>
+                </tr>
+                {% end %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if total > 0 %}
+    <div class="pagination-container">
+        <div class="layui-laypage">
+            {% set pages = (total + 19) // 20 %}
+            {% if page > 1 %}
+            <a href="/admin/digital_employee?page={{ page-1 }}&keyword={{ keyword }}&type={{ type }}">上一页</a>
+            {% end %}
+            {% for p in range(1, pages+1) %}
+            {% if p == page %}
+            <span class="layui-laypage-curr"><em>{{ p }}</em></span>
+            {% else %}
+            <a href="/admin/digital_employee?page={{ p }}&keyword={{ keyword }}&type={{ type }}">{{ p }}</a>
+            {% end %}
+            {% end %}
+            {% if page < pages %}
+            <a href="/admin/digital_employee?page={{ page+1 }}&keyword={{ keyword }}&type={{ type }}">下一页</a>
+            {% end %}
+            <span>共 {{ total }} 条</span>
+        </div>
+    </div>
+    {% end %}
+</div>
+
+<div class="modal-overlay" id="employeeModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modalTitle">新增数字员工</h3>
+            <div class="modal-close" onclick="closeModal()">&times;</div>
+        </div>
+        <div class="modal-body">
+            <form id="employeeForm">
+                <input type="hidden" name="id" id="employeeId">
+                <input type="hidden" name="action" id="employeeAction">
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>名称 <span style="color: #F56C6C;">*</span></label>
+                        <input type="text" name="name" id="name" required placeholder="数字员工名称">
+                    </div>
+                    <div class="form-group">
+                        <label>代号 <span style="color: #F56C6C;">*</span></label>
+                        <input type="text" name="code_name" id="code_name" required placeholder="用于@调度的代号，如 weather">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>类型 <span style="color: #F56C6C;">*</span></label>
+                        <select name="type" id="type" onchange="switchType(this.value)">
+                            <option value="1">LLM类型（基于大语言模型）</option>
+                            <option value="2">API类型（基于接口服务）</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>状态</label>
+                        <select name="status" id="status">
+                            <option value="1">启用</option>
+                            <option value="0">禁用</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>描述</label>
+                    <textarea name="description" id="description" placeholder="数字员工描述信息"></textarea>
+                </div>
+
+                <div class="type-section active" id="llmSection">
+                    <h4 style="margin-bottom: 12px; font-size: 14px; color: #333;">LLM类型配置</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>关联模型</label>
+                            <select name="model_id" id="model_id">
+                                <option value="0">使用默认模型</option>
+                                {% for model in models %}
+                                <option value="{{ model['id'] }}">{{ model['name'] }}</option>
+                                {% end %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>启用Crawl4AI</label>
+                            <select name="use_crawl4ai" id="use_crawl4ai">
+                                <option value="0">否</option>
+                                <option value="1">是</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Prompt模板 <span style="color: #999; font-weight: normal;">（支持参数占位符，如 {keyword}）</span></label>
+                        <textarea name="prompt" id="prompt" placeholder="输入Prompt模板，可使用{param}格式引用参数"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>上传MD文件 <span style="color: #999; font-weight: normal;">（支持上传一个或多个.md文件，内容将自动补充到Prompt中）</span></label>
+                        <input type="file" name="md_files" id="md_files" accept=".md" multiple 
+                               style="padding: 8px; border: 1px solid #e6e6e6; border-radius: 4px; width: 100%;"
+                               onchange="handleMdFileSelect(this)">
+                        <div id="mdFilesList" style="margin-top: 8px; font-size: 13px; color: #666;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>技能列表（JSON格式）</label>
+                        <textarea name="skills" id="skills" placeholder='["skill1", "skill2"]'></textarea>
+                    </div>
+                </div>
+
+                <div class="type-section" id="apiSection">
+                    <h4 style="margin-bottom: 12px; font-size: 14px; color: #333;">API类型配置</h4>
+                    <div class="form-group">
+                        <label>API地址 <span style="color: #F56C6C;">*</span></label>
+                        <input type="text" name="api_url" id="api_url" placeholder="https://api.example.com/endpoint">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>请求方法</label>
+                            <select name="api_method" id="api_method">
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="DELETE">DELETE</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>请求头（JSON格式）</label>
+                            <input type="text" name="api_headers" id="api_headers" placeholder='{"Content-Type": "application/json"}'>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>查询参数（JSON格式）</label>
+                        <textarea name="api_params" id="api_params" placeholder='{"key": "value"}'></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>请求体（JSON格式，POST/PUT时使用）</label>
+                        <textarea name="api_body" id="api_body" placeholder='{"key": "value"}'></textarea>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="closeModal()">取消</button>
+            <button class="btn btn-primary" onclick="submitForm()">保存</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="testModal">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+            <h3>测试数字员工</h3>
+            <div class="modal-close" onclick="closeTestModal()">&times;</div>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>测试参数（JSON格式）</label>
+                <textarea id="testParams" placeholder='{"keyword": "测试"}'></textarea>
+            </div>
+            <button class="btn btn-primary" onclick="runTest()" style="width: 100%;">开始测试</button>
+            <div id="testResult" class="test-result" style="display: none;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="closeTestModal()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<script>
+var currentTestId = null;
+
+function getXsrfToken() {
+    var token = '';
+    var inputs = document.querySelectorAll('input[name="_xsrf"]');
+    if (inputs.length > 0) {
+        token = inputs[0].value;
+    }
+    return token;
+}
+
+function openAddModal() {
+    document.getElementById('employeeId').value = '';
+    document.getElementById('employeeAction').value = 'add';
+    document.getElementById('modalTitle').textContent = '新增数字员工';
+    document.getElementById('employeeForm').reset();
+    document.getElementById('status').value = '1';
+    switchType('1');
+    document.getElementById('employeeModal').classList.add('show');
+}
+
+function editEmployee(id) {
+    fetch('/admin/digital_employee', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-XSRFToken': getXsrfToken()
+        },
+        body: 'action=get&id=' + id + '&_xsrf=' + getXsrfToken()
+    }).then(r => r.json()).then(data => {
+        if (data) {
+            document.getElementById('employeeId').value = data.id;
+            document.getElementById('employeeAction').value = 'edit';
+            document.getElementById('modalTitle').textContent = '编辑数字员工';
+            document.getElementById('name').value = data.name || '';
+            document.getElementById('code_name').value = data.code_name || '';
+            document.getElementById('type').value = data.type || '1';
+            document.getElementById('status').value = data.status || '1';
+            document.getElementById('description').value = data.description || '';
+            document.getElementById('model_id').value = data.model_id || '0';
+            document.getElementById('use_crawl4ai').value = data.use_crawl4ai || '0';
+            document.getElementById('prompt').value = data.prompt || '';
+            document.getElementById('skills').value = data.skills || '';
+            document.getElementById('api_url').value = data.api_url || '';
+            document.getElementById('api_method').value = data.api_method || 'GET';
+            document.getElementById('api_headers').value = data.api_headers || '';
+            document.getElementById('api_params').value = data.api_params || '';
+            document.getElementById('api_body').value = data.api_body || '';
+            switchType(data.type || '1');
+            document.getElementById('employeeModal').classList.add('show');
+        }
+    });
+}
+
+function viewEmployee(id) {
+    editEmployee(id);
+}
+
+function closeModal() {
+    document.getElementById('employeeModal').classList.remove('show');
+}
+
+function switchType(type) {
+    document.getElementById('llmSection').classList.remove('active');
+    document.getElementById('apiSection').classList.remove('active');
+    if (type === '1') {
+        document.getElementById('llmSection').classList.add('active');
+    } else {
+        document.getElementById('apiSection').classList.add('active');
+    }
+}
+
+function handleMdFileSelect(input) {
+    var filesList = document.getElementById('mdFilesList');
+    filesList.innerHTML = '';
+    if (input.files.length > 0) {
+        var files = Array.from(input.files);
+        files.forEach(function(file) {
+            var span = document.createElement('span');
+            span.textContent = file.name + ' (' + (file.size / 1024).toFixed(2) + ' KB)';
+            span.style.display = 'block';
+            span.style.padding = '4px 8px';
+            span.style.background = '#f5f5f5';
+            span.style.borderRadius = '4px';
+            span.style.marginBottom = '4px';
+            filesList.appendChild(span);
+        });
+    }
+}
+
+function submitForm() {
+    var form = document.getElementById('employeeForm');
+    var formData = new FormData(form);
+    formData.append('_xsrf', getXsrfToken());
+    
+    var mdFilesInput = document.getElementById('md_files');
+    if (mdFilesInput && mdFilesInput.files.length > 0) {
+        for (var i = 0; i < mdFilesInput.files.length; i++) {
+            formData.append('md_files', mdFilesInput.files[i]);
+        }
+    }
+    
+    fetch('/admin/digital_employee', {
+        method: 'POST',
+        headers: { 
+            'X-XSRFToken': getXsrfToken()
+        },
+        body: formData
+    }).then(r => r.json()).then(data => {
+        if (data.status === 'success') {
+            alert(data.message);
+            closeModal();
+            window.location.href = '/admin/digital_employee';
+        } else {
+            alert(data.message);
+        }
+    });
+}
+
+function deleteEmployee(id) {
+    if (confirm('确定要删除该数字员工吗？')) {
+        fetch('/admin/digital_employee', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-XSRFToken': getXsrfToken()
+            },
+            body: 'action=delete&id=' + id + '&_xsrf=' + getXsrfToken()
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                alert(data.message);
+                window.location.href = '/admin/digital_employee';
+            } else {
+                alert(data.message);
+            }
+        });
+    }
+}
+
+function toggleEmployee(id, status) {
+    fetch('/admin/digital_employee', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-XSRFToken': getXsrfToken()
+        },
+        body: 'action=toggle&id=' + id + '&status=' + status + '&_xsrf=' + getXsrfToken()
+    }).then(r => r.json()).then(data => {
+        if (data.status === 'success') {
+            alert(data.message);
+            window.location.href = '/admin/digital_employee';
+        } else {
+            alert(data.message);
+        }
+    });
+}
+
+function testEmployee(id) {
+    currentTestId = id;
+    document.getElementById('testParams').value = '';
+    document.getElementById('testResult').style.display = 'none';
+    document.getElementById('testModal').classList.add('show');
+}
+
+function closeTestModal() {
+    document.getElementById('testModal').classList.remove('show');
+    currentTestId = null;
+}
+
+function runTest() {
+    if (!currentTestId) return;
+    
+    var params = document.getElementById('testParams').value;
+    var resultDiv = document.getElementById('testResult');
+    resultDiv.style.display = 'block';
+    resultDiv.textContent = '正在测试...';
+    
+    fetch('/admin/digital_employee', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-XSRFToken': getXsrfToken()
+        },
+        body: 'action=test&id=' + currentTestId + '&test_params=' + encodeURIComponent(params) + '&_xsrf=' + getXsrfToken()
+    }).then(r => r.json()).then(data => {
+        resultDiv.className = 'test-result ' + (data.success ? 'success' : 'error');
+        resultDiv.textContent = JSON.stringify(data, null, 2);
+    }).catch(e => {
+        resultDiv.className = 'test-result error';
+        resultDiv.textContent = '测试失败: ' + e.message;
+    });
+}
+
+function filterByType(type) {
+    var keyword = document.getElementById('keywordInput').value;
+    var url = '/admin/digital_employee?type=' + type;
+    if (keyword) {
+        url += '&keyword=' + encodeURIComponent(keyword);
+    }
+    window.location.href = url;
+}
+
+function doSearch() {
+    var keyword = document.getElementById('keywordInput').value;
+    window.location.href = '/admin/digital_employee?keyword=' + encodeURIComponent(keyword) + '&type={{ type }}';
+}
+
+function clearSearch() {
+    window.location.href = '/admin/digital_employee';
+}
+</script>
+{% end %}

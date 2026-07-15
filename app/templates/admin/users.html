@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "../admin/base.html" %}
 {% block body %}
 <div class="admin-page">
     <div class="page-header">
@@ -69,6 +69,9 @@
                             <i class="layui-icon layui-icon-delete"></i> 删除
                         </button>
                         {% elif user['username'] == 'admin' %}
+                        <button class="layui-btn layui-btn-xs layui-btn-normal" onclick="showChangePwdModal({{ user['id'] }})">
+                            <i class="layui-icon layui-icon-set"></i> 修改密码
+                        </button>
                         <span class="layui-badge">超级管理员</span>
                         {% else %}
                         <span class="layui-badge layui-bg-gray">只读</span>
@@ -146,6 +149,36 @@
     </div>
 </div>
 
+<div class="layui-modal" id="pwdModal">
+    <div class="layui-modal-content">
+        <div class="layui-modal-header">
+            <h3>修改密码</h3>
+            <button class="layui-close" onclick="closePwdModal()"></button>
+        </div>
+        <div class="layui-modal-body">
+            <form class="layui-form" id="pwdForm">
+                <input type="hidden" name="id" id="pwdUserId">
+                <div class="layui-form-item">
+                    <label class="layui-form-label">新密码</label>
+                    <div class="layui-input-block">
+                        <input type="password" name="password" id="newPassword" required lay-verify="required" placeholder="请输入新密码" class="layui-input">
+                    </div>
+                </div>
+                <div class="layui-form-item">
+                    <label class="layui-form-label">确认密码</label>
+                    <div class="layui-input-block">
+                        <input type="password" name="confirmPassword" id="confirmPassword" required lay-verify="required" placeholder="请确认新密码" class="layui-input">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="layui-modal-footer">
+            <button class="layui-btn layui-btn-primary" onclick="closePwdModal()">取消</button>
+            <button class="layui-btn" onclick="submitPwdForm()">确认修改</button>
+        </div>
+    </div>
+</div>
+
 <script>
 function showSearch() {
     document.getElementById('searchBar').style.display = document.getElementById('searchBar').style.display === 'none' ? 'block' : 'none';
@@ -202,6 +235,50 @@ function submitForm() {
         }
     }).catch(function() {
         window.location.href = '/admin/users';
+    });
+}
+
+function showChangePwdModal(id) {
+    document.getElementById('pwdUserId').value = id;
+    document.getElementById('newPassword').value = '';
+    document.getElementById('confirmPassword').value = '';
+    document.getElementById('pwdModal').style.display = 'block';
+}
+
+function closePwdModal() {
+    document.getElementById('pwdModal').style.display = 'none';
+}
+
+function submitPwdForm() {
+    var id = document.getElementById('pwdUserId').value;
+    var password = document.getElementById('newPassword').value;
+    var confirmPassword = document.getElementById('confirmPassword').value;
+    
+    if (password !== confirmPassword) {
+        alert('两次输入的密码不一致');
+        return;
+    }
+    
+    if (password.length < 6) {
+        alert('密码长度不能少于6位');
+        return;
+    }
+    
+    fetch('/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'action=change_pwd&id=' + id + '&password=' + encodeURIComponent(password)
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (data.status === 'success') {
+            alert(data.message);
+            closePwdModal();
+        } else {
+            alert(data.message);
+        }
+    }).catch(function() {
+        alert('修改失败，请重试');
     });
 }
 

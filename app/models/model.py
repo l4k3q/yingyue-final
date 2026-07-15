@@ -7,6 +7,12 @@ import tiktoken
 from app.models.db import get_connection
 
 
+def mask_api_key(api_key: str) -> str:
+    if not api_key or len(api_key) <= 7:
+        return '******'
+    return api_key[:3] + '******' + api_key[-4:]
+
+
 class AIModelRepository:
     @staticmethod
     def get_models(page: int = 1, page_size: int = 20, keyword: str = ""):
@@ -144,7 +150,8 @@ class AIModelService:
 
     @staticmethod
     def chat_completion(model_config: dict, messages: list, stream: bool = True):
-        url = urllib.parse.urljoin(model_config["base_url"], "/chat/completions")
+        base_url = model_config["base_url"].rstrip('/')
+        url = f"{base_url}/chat/completions"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {model_config['api_key']}"
@@ -160,10 +167,17 @@ class AIModelService:
             "stream": stream
         }
 
-        if stream:
-            response = requests.post(url, headers=headers, json=data, stream=True, timeout=120)
-            response.encoding = "utf-8"
-            for line in response.iter_lines():
+        import ssl
+        ssl._create_default_https_context = ssl._create_unverified_context
+        
+        if not stream:
+            response = requests.post(url, headers=headers, json=data, timeout=120, verify=False)
+            return response.json()
+        
+        def stream_generator():
+            resp = requests.post(url, headers=headers, json=data, stream=True, timeout=120, verify=False)
+            resp.encoding = "utf-8"
+            for line in resp.iter_lines():
                 if line:
                     line_str = line.decode("utf-8")
                     if line_str.startswith("data: "):
@@ -174,9 +188,8 @@ class AIModelService:
                             yield json.loads(data_str)
                         except:
                             continue
-        else:
-            response = requests.post(url, headers=headers, json=data, timeout=120)
-            return response.json()
+        
+        return stream_generator()
 
     @staticmethod
     def test_model(model_config: dict):

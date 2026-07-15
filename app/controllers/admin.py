@@ -1,4 +1,6 @@
 import json
+import os
+import shutil
 import tornado.web
 
 from app.models.admin import AdminRepository
@@ -6,8 +8,9 @@ from app.models.user import UserRepository
 from app.models.role import RoleRepository
 from app.models.function import FunctionRepository
 from app.models.watch import WatchSourceRepository, WatchRecordRepository, WatchCollector
-from app.models.model import AIModelRepository, AIModelService
-from app.models.warehouse import DataWarehouseRepository
+from app.models.model import AIModelRepository, AIModelService, mask_api_key
+from app.models.warehouse import DataWarehouseRepository, DeepCollectTaskRepository, DeepCollectService
+from app.models.digital_employee import DigitalEmployeeRepository, DigitalEmployeeService
 
 
 class AdminBaseHandler(tornado.web.RequestHandler):
@@ -93,7 +96,7 @@ class AdminUserHandler(AdminBaseHandler):
             user_id = int(self.get_body_argument("id", 0))
             user = UserRepository.get_user_by_id(user_id)
             if user and user["username"] == "admin":
-                self.write(json.dumps({"status": "error", "message": "超级管理员不允许修改"}))
+                self.write(json.dumps({"status": "error", "message": "超级管理员不允许修改用户名和权限"}))
                 return
             username = self.get_body_argument("username", "")
             role_id = int(self.get_body_argument("role_id", 1))
@@ -101,6 +104,17 @@ class AdminUserHandler(AdminBaseHandler):
                 self.redirect("/admin/users")
             else:
                 self.write(json.dumps({"status": "error", "message": "用户名已存在"}))
+        elif action == "change_pwd":
+            user_id = int(self.get_body_argument("id", 0))
+            user = UserRepository.get_user_by_id(user_id)
+            if user and user["username"] != current_user:
+                self.write(json.dumps({"status": "error", "message": "只允许修改自己的密码"}))
+                return
+            password = self.get_body_argument("password", "")
+            if UserRepository.update_password(user_id, password):
+                self.write(json.dumps({"status": "success", "message": "密码修改成功"}))
+            else:
+                self.write(json.dumps({"status": "error", "message": "密码修改失败"}))
         elif action == "delete":
             if current_user != "admin":
                 self.write(json.dumps({"status": "error", "message": "只有超级管理员可以删除用户"}))
@@ -327,14 +341,42 @@ class AdminDataHandler(AdminBaseHandler):
     def post(self):
         import json
         action = self.get_body_argument("action", "")
-        if action == "delete":
+        if action == "view":
+            record_id = int(self.get_body_argument("id", 0))
+            record = DataWarehouseRepository.get_record_by_id(record_id)
+            if record:
+                self.write(json.dumps(record))
+            else:
+                self.write(json.dumps({"status": "error", "message": "记录不存在"}))
+        elif action == "delete":
             record_id = int(self.get_body_argument("id", 0))
             DataWarehouseRepository.delete_record(record_id)
             self.write(json.dumps({"status": "success", "message": "删除成功"}))
         elif action == "deep_collect":
             record_id = int(self.get_body_argument("id", 0))
-            DataWarehouseRepository.mark_deep_collected(record_id)
-            self.write(json.dumps({"status": "success", "message": "深度采集已标记"}))
+            result = DeepCollectService.execute_deep_collect(record_id)
+            if result.get("success", False):
+                self.write(json.dumps({"status": "success", "message": result.get("message", "深度采集完成"), "task_id": result.get("task_id")}))
+            else:
+                self.write(json.dumps({"status": "error", "message": result.get("error", "采集失败")}))
+        elif action == "batch_deep_collect":
+            record_ids_json = self.get_body_argument("ids", "")
+            try:
+                record_ids = json.loads(record_ids_json)
+                results = DeepCollectService.batch_deep_collect(record_ids)
+                success_count = sum(1 for r in results if r.get("success", False))
+                self.write(json.dumps({"status": "success", "message": f"批量采集完成，成功 {success_count}/{len(record_ids)}", "results": results}))
+            except Exception as e:
+                self.write(json.dumps({"status": "error", "message": str(e)}))
+        elif action == "deep_collect_detail":
+            record_id = int(self.get_body_argument("id", 0))
+            detail = DeepCollectService.get_deep_collect_detail(record_id)
+            self.write(json.dumps(detail))
+        elif action == "deep_collect_tasks":
+            record_id = int(self.get_body_argument("record_id", 0))
+            status = int(self.get_body_argument("status", -1))
+            tasks, total = DeepCollectTaskRepository.get_tasks(record_id=record_id if record_id > 0 else 0, status=status)
+            self.write(json.dumps({"status": "success", "data": tasks, "total": total}))
         elif action == "save_to_warehouse":
             articles_json = self.get_body_argument("articles", "")
             source_name = self.get_body_argument("source_name", "")
@@ -361,12 +403,161 @@ class AdminDataHandler(AdminBaseHandler):
 
 class AdminCollectionHandler(AdminBaseHandler):
     def get(self):
-        self.render("admin/collection.html", title="采集管理")
+        page = int(self.get_query_argument("page", 1))
+        keyword = self.get_query_argument("keyword", "")
+        source = self.get_query_argument("source", "")
+        
+        records, total = WatchRecordRepository.get_records(page=page, page_size=20, keyword=keyword)
+        
+        processed_records = []
+        for record in records:
+            articles = []
+            if record.get("data"):
+                try:
+                    articles = json.loads(record["data"])
+                except:
+                    articles = []
+            if isinstance(articles, list):
+                record["article_count"] = len(articles)
+            else:
+                record["article_count"] = 0
+            processed_records.append(record)
+        
+        stats = WatchRecordRepository.get_stats()
+        
+        self.render("admin/collection.html", title="采集管理", records=processed_records, total=total, page=page, keyword=keyword, source=source, stats=stats)
 
 
 class AdminDigitalEmployeeHandler(AdminBaseHandler):
     def get(self):
-        self.render("admin/digital_employee.html", title="数字员工")
+        page = int(self.get_query_argument("page", 1))
+        keyword = self.get_query_argument("keyword", "")
+        employee_type = int(self.get_query_argument("type", 0))
+        
+        employees, total = DigitalEmployeeRepository.get_employees(page=page, page_size=20, keyword=keyword, type=employee_type)
+        stats = DigitalEmployeeRepository.get_stats()
+        
+        models, _ = AIModelRepository.get_models(page=1, page_size=100)
+        
+        self.render("admin/digital_employee.html", title="数字员工", 
+                    employees=employees, total=total, page=page, 
+                    keyword=keyword, type=employee_type, stats=stats, models=models)
+
+    def post(self):
+        action = self.get_body_argument("action", "")
+        
+        if action == "get":
+            employee_id = int(self.get_body_argument("id", 0))
+            employee = DigitalEmployeeRepository.get_employee_by_id(employee_id)
+            if employee:
+                self.write(json.dumps(employee))
+            else:
+                self.write(json.dumps({"status": "error", "message": "数字员工不存在"}))
+        elif action == "add":
+            name = self.get_body_argument("name", "")
+            code_name = self.get_body_argument("code_name", "")
+            employee_type = int(self.get_body_argument("type", 1))
+            model_id = int(self.get_body_argument("model_id", 0))
+            prompt = self.get_body_argument("prompt", "")
+            skills = self.get_body_argument("skills", "")
+            use_crawl4ai = int(self.get_body_argument("use_crawl4ai", 0))
+            api_url = self.get_body_argument("api_url", "")
+            api_method = self.get_body_argument("api_method", "GET")
+            api_headers = self.get_body_argument("api_headers", "")
+            api_params = self.get_body_argument("api_params", "")
+            api_body = self.get_body_argument("api_body", "")
+            description = self.get_body_argument("description", "")
+            
+            md_files_path = ""
+            
+            uploaded_files = self.request.files.get("md_files", [])
+            if uploaded_files:
+                md_files_path = self._save_md_files(code_name, uploaded_files)
+            
+            if DigitalEmployeeRepository.create_employee(
+                name, code_name, employee_type, model_id, prompt, skills,
+                use_crawl4ai, api_url, api_method, api_headers, api_params, api_body, description,
+                md_files_path=md_files_path
+            ):
+                self.write(json.dumps({"status": "success", "message": "数字员工添加成功"}))
+            else:
+                if md_files_path and os.path.exists(md_files_path):
+                    shutil.rmtree(md_files_path)
+                self.write(json.dumps({"status": "error", "message": "名称或代号已存在"}))
+        
+        elif action == "edit":
+            employee_id = int(self.get_body_argument("id", 0))
+            name = self.get_body_argument("name", "")
+            code_name = self.get_body_argument("code_name", "")
+            employee_type = int(self.get_body_argument("type", 1))
+            model_id = int(self.get_body_argument("model_id", 0))
+            prompt = self.get_body_argument("prompt", "")
+            skills = self.get_body_argument("skills", "")
+            use_crawl4ai = int(self.get_body_argument("use_crawl4ai", 0))
+            api_url = self.get_body_argument("api_url", "")
+            api_method = self.get_body_argument("api_method", "GET")
+            api_headers = self.get_body_argument("api_headers", "")
+            api_params = self.get_body_argument("api_params", "")
+            api_body = self.get_body_argument("api_body", "")
+            description = self.get_body_argument("description", "")
+            status = int(self.get_body_argument("status", 1))
+            
+            employee = DigitalEmployeeRepository.get_employee_by_id(employee_id)
+            md_files_path = employee.get("md_files_path", "") if employee else ""
+            
+            uploaded_files = self.request.files.get("md_files", [])
+            if uploaded_files:
+                md_files_path = self._save_md_files(code_name, uploaded_files)
+            
+            if DigitalEmployeeRepository.update_employee(
+                employee_id, name, code_name, employee_type, model_id, prompt, skills,
+                use_crawl4ai, api_url, api_method, api_headers, api_params, api_body, description, status,
+                md_files_path=md_files_path
+            ):
+                self.write(json.dumps({"status": "success", "message": "数字员工更新成功"}))
+            else:
+                self.write(json.dumps({"status": "error", "message": "名称或代号已存在"}))
+        
+        elif action == "delete":
+            employee_id = int(self.get_body_argument("id", 0))
+            employee = DigitalEmployeeRepository.get_employee_by_id(employee_id)
+            if employee:
+                md_files_path = employee.get("md_files_path", "")
+                if md_files_path and os.path.exists(md_files_path):
+                    shutil.rmtree(md_files_path)
+            DigitalEmployeeRepository.delete_employee(employee_id)
+            self.write(json.dumps({"status": "success", "message": "删除成功"}))
+        
+        elif action == "toggle":
+            employee_id = int(self.get_body_argument("id", 0))
+            status = int(self.get_body_argument("status", 0))
+            DigitalEmployeeRepository.toggle_employee_status(employee_id, status)
+            self.write(json.dumps({"status": "success", "message": "状态更新成功"}))
+        
+        elif action == "test":
+            employee_id = int(self.get_body_argument("id", 0))
+            test_params_json = self.get_body_argument("test_params", "")
+            test_params = json.loads(test_params_json) if test_params_json else None
+            result = DigitalEmployeeService.test_employee(employee_id, test_params)
+            self.write(json.dumps(result))
+
+    def _save_md_files(self, code_name, files):
+        base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "employee_docs")
+        employee_dir = os.path.join(base_dir, code_name)
+        
+        if os.path.exists(employee_dir):
+            shutil.rmtree(employee_dir)
+        
+        os.makedirs(employee_dir, exist_ok=True)
+        
+        for file in files:
+            filename = file["filename"]
+            if filename.endswith(".md"):
+                file_path = os.path.join(employee_dir, filename)
+                with open(file_path, "wb") as f:
+                    f.write(file["body"])
+        
+        return employee_dir
 
 
 class AdminModelHandler(AdminBaseHandler):
@@ -374,12 +565,23 @@ class AdminModelHandler(AdminBaseHandler):
         page = int(self.get_query_argument("page", 1))
         keyword = self.get_query_argument("keyword", "")
         models, total = AIModelRepository.get_models(page=page, page_size=12, keyword=keyword)
+        for model in models:
+            model["api_key"] = mask_api_key(model["api_key"])
         token_stats = AIModelRepository.get_token_stats()
         self.render("admin/model.html", title="模型引擎", models=models, total=total, page=page, keyword=keyword, token_stats=token_stats)
 
     def post(self):
         action = self.get_body_argument("action", "")
-        if action == "add":
+        if action == "get":
+            model_id = int(self.get_body_argument("id", 0))
+            model = AIModelRepository.get_model_by_id(model_id)
+            if model:
+                model["api_key"] = mask_api_key(model["api_key"])
+                self.write(json.dumps(model))
+            else:
+                self.write(json.dumps({"error": "模型不存在"}))
+            return
+        elif action == "add":
             name = self.get_body_argument("name", "")
             model_id = self.get_body_argument("model_id", "")
             api_key = self.get_body_argument("api_key", "")
@@ -401,6 +603,10 @@ class AdminModelHandler(AdminBaseHandler):
             name = self.get_body_argument("name", "")
             model_id_str = self.get_body_argument("model_id", "")
             api_key = self.get_body_argument("api_key", "")
+            if "******" in api_key:
+                original_model = AIModelRepository.get_model_by_id(model_id)
+                if original_model:
+                    api_key = original_model["api_key"]
             base_url = self.get_body_argument("base_url", "")
             temperature = float(self.get_body_argument("temperature", 0.7))
             max_tokens = int(self.get_body_argument("max_tokens", 4096))

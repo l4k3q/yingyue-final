@@ -5,7 +5,7 @@ from tornado.httpserver import HTTPServer
 
 from app.controllers.auth import LoginHandler, LogoutHandler, RegisterHandler
 from app.controllers.home import IndexHandler
-from app.controllers.chat import ChatHandler, ChatWebSocketHandler
+from app.controllers.chat import ChatWebSocketHandler, ConversationAPIHandler, DigitalEmployeeAPIHandler
 from app.controllers.report import ReportHandler
 from app.controllers.history import HistoryHandler
 from app.controllers.export import ExportHandler
@@ -37,10 +37,14 @@ def webapp():
         (r"/logout", LogoutHandler),
         (r"/index", IndexHandler),
         (r"/register", RegisterHandler),
-        (r"/chat", ChatHandler),
+        
         (r"/report", ReportHandler),
         (r"/history", HistoryHandler),
         (r"/export", ExportHandler),
+
+        # ========== API 路由 ==========
+        (r"/api/conversations", ConversationAPIHandler),
+        (r"/api/digital_employees", DigitalEmployeeAPIHandler),
 
         # ========== WebSocket 路由 ==========
         (r"/ws/chat", ChatWebSocketHandler),

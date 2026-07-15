@@ -29,7 +29,7 @@ class LogoutHandler(BaseHandler):
 
 class RegisterHandler(BaseHandler):
     def get(self):
-        self.render("register.html", title="用户注册", error=None)
+        self.render("register.html", title="用户注册", error=None, success=None)
 
     def post(self):
         username = self.get_body_argument("username", "")

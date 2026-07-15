@@ -104,6 +104,17 @@ class UserRepository:
         return True
 
     @staticmethod
+    def update_password(user_id: int, password: str) -> bool:
+        salt = secrets.token_bytes(16)
+        password_hash = _hash_password(password, salt)
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE users SET password_hash=?, salt=? WHERE id=?",
+                (password_hash, salt.hex(), user_id)
+            )
+        return True
+
+    @staticmethod
     def verify_user(username: str, password: str) -> bool:
         row = UserRepository.get_user_by_username(username)
         if not row:
