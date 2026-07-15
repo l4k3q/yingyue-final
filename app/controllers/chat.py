@@ -169,7 +169,15 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
         self.write_message({"type": "typing", "data": f"正在调用 @{employee_name}..."})
         
         try:
-            result = DigitalEmployeeService.execute(employee, {"query": args, "city": args.split()[-1] if args else ""})
+            # 对于天气员工，取第一个词作为城市名（更准确地匹配用户意图）
+            city = ""
+            if args:
+                parts = args.split()
+                if employee.get("code_name") == "weather":
+                    city = parts[0] if parts else args.strip()
+                else:
+                    city = parts[-1] if parts else args.strip()
+            result = DigitalEmployeeService.execute(employee, {"query": args, "city": city})
             
             if result.get("success", False):
                 content = result.get("content", "")
