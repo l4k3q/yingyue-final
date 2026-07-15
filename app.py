@@ -15,7 +15,12 @@ from app.controllers.admin import (
     AdminRoleHandler, AdminRoleFunctionsHandler, AdminWatchHandler,
     AdminWatchSourceHandler, AdminDataHandler, AdminCollectionHandler,
     AdminDigitalEmployeeHandler, AdminModelHandler, AdminModelTestHandler,
-    AdminDashboardHandler, AdminSentimentHandler
+    AdminDashboardHandler, AdminScreenHandler, AdminSentimentHandler,
+    AdminNoPermissionHandler
+)
+from app.controllers.screen_api import (
+    ScreenSourcesHandler, ScreenKeywordsHandler,
+    ScreenGeoHandler, ScreenRealtimeHandler
 )
 from app.models.db import init_db
 
@@ -66,7 +71,15 @@ def webapp():
         (r"/admin/model", AdminModelHandler),
         (r"/admin/model/test", AdminModelTestHandler),
         (r"/admin/dashboard", AdminDashboardHandler),
+        (r"/admin/screen", AdminScreenHandler),
         (r"/admin/sentiment", AdminSentimentHandler),
+        (r"/admin/no_permission", AdminNoPermissionHandler),
+
+        # ========== 大屏统计 API 路由 ==========
+        (r"/api/screen/sources", ScreenSourcesHandler),
+        (r"/api/screen/keywords", ScreenKeywordsHandler),
+        (r"/api/screen/geo", ScreenGeoHandler),
+        (r"/api/screen/realtime", ScreenRealtimeHandler),
     ],
         **settings
     )
