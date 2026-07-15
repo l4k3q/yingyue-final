@@ -194,7 +194,7 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             token_count = len(ai_response) // 4
             
             if self.conversation_id:
-                ConversationRepository.add_message(self.conversation_id, "user", f"@{employee_name} {args}" if args else f"@{employee_name}")
+                # 注意：handle_message 已写入用户消息，此处只写入助手回复
                 ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
             
             self.write_message({"type": "stream", "data": ai_response})
@@ -419,6 +419,8 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
                     f"由于尚未配置大模型服务，我暂时无法为您提供完整的AI分析。"
                     f"请联系管理员配置模型引擎后，我将能为您提供更强大的智能分析能力！"
                 )
+                if self.conversation_id:
+                    ConversationRepository.add_message(self.conversation_id, "assistant", fallback)
                 self.write_message({"type": "stream", "data": fallback})
                 self.write_message({"type": "done"})
                 return
@@ -450,9 +452,11 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
                 if isinstance(result, dict) and "choices" in result and result["choices"]:
                     full_response = result["choices"][0]["message"]["content"]
                     token_count = result.get("usage", {}).get("completion_tokens", 0)
-                    self.write_message({"type": "stream", "data": full_response})
+                    # 使用 stream_chunk 填充已有的流式气泡，避免空消息残留
+                    self.write_message({"type": "stream_chunk", "data": full_response})
                 else:
                     self.write_message({"type": "error", "data": "AI 响应失败，请稍后重试。"})
+                    self.write_message({"type": "done"})
                     return
 
             # 持久化助手回复
