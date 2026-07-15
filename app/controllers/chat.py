@@ -186,13 +186,22 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
                 "拉萨": "Lhasa", "乌鲁木齐": "Urumqi",
             }
             if employee.get("code_name") == "weather" and args:
-                text = args.strip()
-                for word in ["近五天", "近三天", "今天", "明天", "天气预报", "天气", "气温", "温度", "的", "表格", "情况", "怎么样", "如何"]:
-                    text = text.replace(word, "")
-                import re as re_mod
-                city_match = re_mod.match(r'[一-鿿]{2,3}', text.strip())
-                city_cn = city_match.group(0) if city_match else text.strip()[:2]
-                city = CITY_MAP.get(city_cn, city_cn)  # 有英文名就用英文，否则用中文
+                # 优先匹配已知城市名（避免把"生成一张"等误判为城市）
+                city_cn = None
+                for cn_name in CITY_MAP:
+                    if cn_name in args:
+                        city_cn = cn_name
+                        break
+                if not city_cn:
+                    # 去除常见非城市词后提取前2-3个汉字
+                    text = args.strip()
+                    for word in ["生成一张", "生成", "一张", "查询", "近五天", "近三天", "今天", "明天",
+                                 "天气预报", "天气", "气温", "温度", "的", "表格", "情况", "怎么样", "如何"]:
+                        text = text.replace(word, "")
+                    import re as re_mod
+                    city_match = re_mod.match(r'[一-鿿]{2,3}', text.strip())
+                    city_cn = city_match.group(0) if city_match else (text.strip().split()[0] if text.strip().split() else text.strip()[:2])
+                city = CITY_MAP.get(city_cn, city_cn) if city_cn else args.strip()[:2]
             elif args:
                 parts = args.split()
                 city = parts[-1] if parts else args.strip()
