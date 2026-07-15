@@ -254,9 +254,19 @@ class AdminWatchHandler(AdminBaseHandler):
             source_ids = [int(s) for s in source_ids.split(",") if s.strip()]
             
             for source_id in source_ids:
+                source = WatchSourceRepository.get_source_by_id(source_id)
                 html_content = WatchCollector.collect(source_id, keyword, page=1)
                 if html_content and "采集失败" not in html_content:
-                    articles = WatchCollector.parse_baidu_news(html_content)
+                    # 根据源的配置选择解析器
+                    parser_name = WatchCollector.get_parser(source)
+                    if parser_name == "sina_news":
+                        articles = WatchCollector.parse_sina_news(html_content)
+                    elif parser_name == "sogou_news":
+                        articles = WatchCollector.parse_sogou_news(html_content)
+                    elif parser_name == "360_news":
+                        articles = WatchCollector.parse_360_news(html_content)
+                    else:
+                        articles = WatchCollector.parse_baidu_news(html_content)
                     WatchRecordRepository.create_record(source_id, keyword, page=1, data=json.dumps(articles), status=1)
                 else:
                     WatchRecordRepository.create_record(source_id, keyword, page=1, data=html_content or "", status=0)
@@ -298,7 +308,8 @@ class AdminWatchSourceHandler(AdminBaseHandler):
             request_headers = self.get_body_argument("request_headers", "")
             params = self.get_body_argument("params", "")
             description = self.get_body_argument("description", "")
-            WatchSourceRepository.create_source(name, url, request_headers, params, description)
+            collect_config = self.get_body_argument("collect_config", "")
+            WatchSourceRepository.create_source(name, url, request_headers, params, description, collect_config)
             self.redirect("/admin/watch/source")
         elif action == "edit":
             source_id = int(self.get_body_argument("id", 0))
@@ -307,7 +318,8 @@ class AdminWatchSourceHandler(AdminBaseHandler):
             request_headers = self.get_body_argument("request_headers", "")
             params = self.get_body_argument("params", "")
             description = self.get_body_argument("description", "")
-            WatchSourceRepository.update_source(source_id, name, url, request_headers, params, description)
+            collect_config = self.get_body_argument("collect_config", "")
+            WatchSourceRepository.update_source(source_id, name, url, request_headers, params, description, collect_config)
             self.redirect("/admin/watch/source")
         elif action == "delete":
             source_id = int(self.get_body_argument("id", 0))
@@ -321,9 +333,19 @@ class AdminWatchSourceHandler(AdminBaseHandler):
         elif action == "test":
             source_id = int(self.get_body_argument("id", 0))
             keyword = self.get_body_argument("keyword", "测试")
+            source = WatchSourceRepository.get_source_by_id(source_id)
             html_content = WatchCollector.collect(source_id, keyword, page=1)
             if html_content and "采集失败" not in html_content:
-                articles = WatchCollector.parse_baidu_news(html_content)
+                # 根据源的配置选择解析器
+                parser_name = WatchCollector.get_parser(source)
+                if parser_name == "sina_news":
+                    articles = WatchCollector.parse_sina_news(html_content)
+                elif parser_name == "sogou_news":
+                    articles = WatchCollector.parse_sogou_news(html_content)
+                elif parser_name == "360_news":
+                    articles = WatchCollector.parse_360_news(html_content)
+                else:
+                    articles = WatchCollector.parse_baidu_news(html_content)
                 self.write(json.dumps({"status": "success", "data": articles}))
             else:
                 self.write(json.dumps({"status": "error", "message": html_content}))
