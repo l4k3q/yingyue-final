@@ -163,13 +163,27 @@ class AIModelService:
 
         import ssl
         ssl._create_default_https_context = ssl._create_unverified_context
-        
+
         if not stream:
             response = requests.post(url, headers=headers, json=data, timeout=120, verify=False)
+            if response.status_code != 200:
+                try:
+                    err_body = response.json()
+                except Exception:
+                    err_body = {"error": {"message": response.text or f"HTTP {response.status_code}"}}
+                return err_body
             return response.json()
-        
+
         def stream_generator():
             resp = requests.post(url, headers=headers, json=data, stream=True, timeout=120, verify=False)
+            if resp.status_code != 200:
+                try:
+                    err_body = resp.json()
+                    error_msg = err_body.get("error", {}).get("message", str(err_body))
+                except Exception:
+                    error_msg = resp.text or f"HTTP {resp.status_code}"
+                yield {"error": True, "message": error_msg, "status_code": resp.status_code}
+                return
             resp.encoding = "utf-8"
             for line in resp.iter_lines():
                 if line:
@@ -180,9 +194,9 @@ class AIModelService:
                             break
                         try:
                             yield json.loads(data_str)
-                        except:
+                        except Exception:
                             continue
-        
+
         return stream_generator()
 
     @staticmethod
@@ -202,6 +216,13 @@ class AIModelService:
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens
                 }
+            if "error" in result:
+                err = result["error"]
+                if isinstance(err, dict):
+                    error_msg = err.get("message", str(err))
+                else:
+                    error_msg = str(err)
+                return {"success": False, "error": error_msg}
             return {"success": False, "error": "无响应数据"}
         except Exception as e:
             return {"success": False, "error": str(e)}

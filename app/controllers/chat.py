@@ -12,6 +12,8 @@ from app.models.model import AIModelRepository, AIModelService
 from app.models.intent import IntentService
 from app.models.db_query import DBQueryService
 from app.models.report import ReportService
+from app.models.sensitive_word import SensitiveWordRepository
+from app.models.security_alert import SecurityAlertRepository
 
 
 class ConversationAPIHandler(BaseHandler):
@@ -101,12 +103,32 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
     def handle_message(self, content):
         if not content or not self.user_id:
             return
-        
+
+        is_safe, matched = SensitiveWordRepository.scan(content)
+        SensitiveWordRepository.create_scan_log("conversation_message", 0, content, is_safe, len(matched))
+        if not is_safe:
+            risk = SensitiveWordRepository.highest_risk_level(matched)
+            SecurityAlertRepository.create_alert(
+                "conversation", self.conversation_id or 0,
+                self.user_id, self.username or "", matched,
+                content[:300], risk,
+            )
+            words_list = ", ".join([w["word"] for w in matched[:5]])
+            self.write_message({
+                "type": "warning",
+                "data": {
+                    "message": f"您发送的内容包含敏感信息，已被系统拦截。命中敏感词: {words_list}",
+                    "words": matched,
+                    "risk_level": risk,
+                }
+            })
+            return
+
         if not self.conversation_id:
             self.conversation_id = ConversationRepository.create_conversation(self.user_id, content[:30] if len(content) > 30 else content)
-        
+
         ConversationRepository.add_message(self.conversation_id, "user", content)
-        
+
         intent_result = IntentService.recognize_with_llm(content)
         intent = intent_result.get("intent", "general_chat")
         confidence = intent_result.get("confidence", 0.0)
@@ -378,7 +400,11 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             result = AIModelService.chat_completion(model, messages, stream=False)
             
             if isinstance(result, dict) and "error" in result:
-                error_msg = result["error"].get("message", str(result["error"]))
+                err = result["error"]
+                if isinstance(err, dict):
+                    error_msg = err.get("message", str(err))
+                else:
+                    error_msg = str(err)
                 if "Authentication" in error_msg or "api key" in error_msg.lower() or "invalid" in error_msg.lower():
                     return f"AI 响应失败：API Key 无效或认证失败。请检查模型配置中的 API Key 是否正确。\n\n错误详情：{error_msg}\n\n您的问题是：\"{content}\"", 0
                 return f"AI 响应失败：{error_msg}\n\n您的问题是：\"{content}\"", 0

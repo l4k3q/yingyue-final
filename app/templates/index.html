@@ -740,6 +740,9 @@
                     case 'error':
                         showError(data.data);
                         break;
+                    case 'warning':
+                        showWarning(data.data);
+                        break;
                     case 'messages_loaded':
                         loadMessages(data.data);
                         break;
@@ -924,6 +927,20 @@
         
         function showError(error) {
             appendMessage('assistant', `<span style="color:#dc2626">${error}</span>`);
+        }
+
+        function showWarning(data) {
+            var wordsHtml = '';
+            if (data.words && data.words.length > 0) {
+                wordsHtml = '<div style="margin-top:6px;font-size:12px;">命中敏感词: ' +
+                    data.words.map(function(w){ return '<span style="display:inline-block;background:#fecaca;color:#991b1b;padding:1px 6px;border-radius:3px;margin:1px;">' + w.word + '</span>'; }).join(' ') +
+                    '</div>';
+            }
+            var riskLabel = '';
+            if (data.risk_level >= 3) riskLabel = '<span style="color:#dc2626;font-weight:600;">[高风险]</span> ';
+            else if (data.risk_level >= 2) riskLabel = '<span style="color:#ea580c;font-weight:600;">[中风险]</span> ';
+            appendMessage('assistant', riskLabel + '<span style="color:#dc2626;">' + data.message + '</span>' + wordsHtml);
+            removeTyping();
         }
         
         function sendMessage() {

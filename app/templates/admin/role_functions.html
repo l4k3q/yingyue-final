@@ -33,9 +33,9 @@
 layui.use(['tree'], function() {
     var tree = layui.tree;
     
-    var selectedIds = {{ selected_ids }};
-    
-    var treeData = {{ function_tree }};
+    var selectedIds = {% raw selected_ids %};
+
+    var treeData = {% raw function_tree %};
     
     tree.render({
         elem: '#functionTree',

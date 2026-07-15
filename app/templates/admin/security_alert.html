@@ -1,0 +1,279 @@
+{% extends "../admin/base.html" %}
+{% block body %}
+<div style="display:none;">{% module xsrf_form_html() %}</div>
+<style>
+.admin-page { padding: 20px; }
+.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.page-header h2 { margin: 0; font-size: 18px; color: #1f2937; }
+.stats-mini { display: flex; gap: 12px; margin-bottom: 16px; }
+.stat-mini { background: #fff; border-radius: 8px; padding: 12px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.stat-mini span { font-size: 20px; font-weight: 700; margin-right: 4px; }
+.stat-mini small { font-size: 12px; color: #9ca3af; }
+.stat-mini .red { color: #ef4444; }
+.stat-mini .orange { color: #f97316; }
+.stat-mini .green { color: #10b981; }
+.stat-mini .blue { color: #3b82f6; }
+.search-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.search-bar input, .search-bar select { padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; }
+.search-bar input { width: 200px; }
+.btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; border: none; }
+.btn-primary { background: #4f46e5; color: #fff; }
+.btn-success { background: #10b981; color: #fff; }
+.btn-warning { background: #f59e0b; color: #fff; }
+.btn-danger { background: #ef4444; color: #fff; }
+.btn-default { background: #e5e7eb; color: #374151; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+th, td { padding: 10px 14px; text-align: left; font-size: 13px; border-bottom: 1px solid #f3f4f6; }
+th { background: #f9fafb; color: #6b7280; font-weight: 500; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+.badge-high { background: #fecaca; color: #991b1b; }
+.badge-mid { background: #fed7aa; color: #9a3412; }
+.badge-low { background: #fef08a; color: #713f12; }
+.badge-pending { background: #dbeafe; color: #1e40af; }
+.badge-handled { background: #d1fae5; color: #065f46; }
+.badge-ignored { background: #e5e7eb; color: #6b7280; }
+.pagination { margin-top: 16px; display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
+.pagination a, .pagination span { display: inline-block; padding: 5px 12px; font-size: 13px; border-radius: 4px; border: 1px solid #d1d5db; color: #374151; text-decoration: none; }
+.pagination span.current { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; justify-content: center; align-items: center; }
+.modal-overlay.show { display: flex; }
+.modal-content { background: #fff; border-radius: 12px; width: 700px; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+.modal-header { padding: 16px 20px; border-bottom: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center; }
+.modal-header h3 { margin: 0; font-size: 16px; }
+.modal-close { font-size: 20px; cursor: pointer; color: #9ca3af; }
+.modal-body { padding: 20px; }
+.modal-footer { padding: 12px 20px; border-top: 1px solid #f3f4f6; display: flex; justify-content: flex-end; gap: 8px; }
+.detail-row { margin-bottom: 12px; }
+.detail-row label { font-size: 12px; color: #9ca3af; display: block; margin-bottom: 2px; }
+.detail-row .val { font-size: 14px; color: #1f2937; }
+.word-chip { display: inline-block; background: #ede9fe; color: #6d28d9; padding: 3px 10px; border-radius: 12px; margin: 2px; font-size: 12px; }
+.ai-box { background: #f8fafc; border-radius: 8px; padding: 14px; margin-top: 8px; line-height: 1.8; font-size: 13px; color: #475569; white-space: pre-wrap; }
+</style>
+
+<div class="admin-page">
+    <div class="page-header">
+        <h2>预警记录</h2>
+    </div>
+
+    <div class="stats-mini">
+        <div class="stat-mini"><span class="blue">{{ stats.get('total', 0) }}</span><small>预警总数</small></div>
+        <div class="stat-mini"><span class="red">{{ stats.get('pending', 0) }}</span><small>待处理</small></div>
+        <div class="stat-mini"><span class="orange">{{ stats.get('high_risk', 0) }}</span><small>高风险</small></div>
+        <div class="stat-mini"><span class="green">{{ stats.get('handled', 0) }}</span><small>已处理</small></div>
+    </div>
+
+    <div class="search-bar">
+        <input type="text" id="keywordInput" placeholder="搜索内容/用户..." value="{{ keyword }}">
+        <select id="sourceTypeSelect">
+            <option value="">全部来源</option>
+            <option value="conversation" {% if source_type == 'conversation' %}selected{% end %}>用户对话</option>
+            <option value="watch_record" {% if source_type == 'watch_record' %}selected{% end %}>瞭望采集</option>
+            <option value="data_warehouse" {% if source_type == 'data_warehouse' %}selected{% end %}>数据仓库</option>
+        </select>
+        <select id="riskLevelSelect">
+            <option value="0">全部风险级别</option>
+            <option value="3" {% if risk_level == 3 %}selected{% end %}>高风险</option>
+            <option value="2" {% if risk_level == 2 %}selected{% end %}>中风险</option>
+            <option value="1" {% if risk_level == 1 %}selected{% end %}>低风险</option>
+        </select>
+        <select id="statusSelect">
+            <option value="-1">全部状态</option>
+            <option value="0" {% if status_filter == 0 %}selected{% end %}>未处理</option>
+            <option value="1" {% if status_filter == 1 %}selected{% end %}>已处理</option>
+            <option value="2" {% if status_filter == 2 %}selected{% end %}>已忽略</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="doSearch()">搜索</button>
+        <button class="btn btn-default btn-sm" onclick="window.location.href='/admin/security-alert'">清除</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>来源</th>
+                <th>内容片段</th>
+                <th>命中词</th>
+                <th>风险级别</th>
+                <th>状态</th>
+                <th>时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in alerts %}
+            <tr>
+                <td>{{ a['id'] }}</td>
+                <td>
+                    {% if a['source_type'] == 'conversation' %}用户对话
+                    {% elif a['source_type'] == 'watch_record' %}瞭望采集
+                    {% elif a['source_type'] == 'data_warehouse' %}数据仓库
+                    {% else %}{{ a['source_type'] }}{% end %}
+                </td>
+                <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ a.get('content_snippet', '')[:40] }}{% if len(a.get('content_snippet', '')) > 40 %}...{% end %}</td>
+                <td>
+                    {% for w in a.get('matched_words', [])[:3] %}
+                    <span class="word-chip">{{ w.get('word', '') }}</span>
+                    {% end %}
+                </td>
+                <td>
+                    {% set rl = a.get('risk_level', 1) %}
+                    {% if rl >= 3 %}<span class="badge badge-high">高风险</span>
+                    {% elif rl >= 2 %}<span class="badge badge-mid">中风险</span>
+                    {% else %}<span class="badge badge-low">低风险</span>{% end %}
+                </td>
+                <td>
+                    {% set st = a.get('status', 0) %}
+                    {% if st == 0 %}<span class="badge badge-pending">未处理</span>
+                    {% elif st == 1 %}<span class="badge badge-handled">已处理</span>
+                    {% else %}<span class="badge badge-ignored">已忽略</span>{% end %}
+                </td>
+                <td>{{ a.get('created_at', '')[:16] }}</td>
+                <td>
+                    <button class="btn btn-default btn-sm" onclick="viewDetail({{ a['id'] }})">详情</button>
+                    {% if a.get('status', 0) == 0 %}
+                    <button class="btn btn-success btn-sm" onclick="handleAlert({{ a['id'] }}, 1)">处理</button>
+                    <button class="btn btn-warning btn-sm" onclick="handleAlert({{ a['id'] }}, 2)">忽略</button>
+                    {% end %}
+                </td>
+            </tr>
+            {% end %}
+            {% if not alerts %}
+            <tr><td colspan="8" style="text-align:center; padding:30px; color:#9ca3af;">暂无预警记录</td></tr>
+            {% end %}
+        </tbody>
+    </table>
+
+    {% if total > 0 %}
+    <div class="pagination">
+        {% set pages = (total + 19) // 20 %}
+        {% if page > 1 %}
+        <a href="?page={{ page-1 }}&keyword={{ keyword }}&source_type={{ source_type }}&risk_level={{ risk_level }}&status_filter={{ status_filter }}">上一页</a>
+        {% end %}
+        {% for p in range(1, pages+1) %}
+        {% if p == page %}
+        <span class="current">{{ p }}</span>
+        {% else %}
+        <a href="?page={{ p }}&keyword={{ keyword }}&source_type={{ source_type }}&risk_level={{ risk_level }}&status_filter={{ status_filter }}">{{ p }}</a>
+        {% end %}
+        {% end %}
+        {% if page < pages %}
+        <a href="?page={{ page+1 }}&keyword={{ keyword }}&source_type={{ source_type }}&risk_level={{ risk_level }}&status_filter={{ status_filter }}">下一页</a>
+        {% end %}
+        <span style="margin-left:8px; font-size:13px; color:#6b7280;">共 {{ total }} 条</span>
+    </div>
+    {% end %}
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>预警详情</h3>
+            <div class="modal-close" onclick="closeDetailModal()">&times;</div>
+        </div>
+        <div class="modal-body">
+            <div class="detail-row"><label>预警ID</label><div class="val" id="detailId"></div></div>
+            <div class="detail-row"><label>来源类型</label><div class="val" id="detailSource"></div></div>
+            <div class="detail-row"><label>涉及用户</label><div class="val" id="detailUser"></div></div>
+            <div class="detail-row"><label>风险级别</label><div class="val" id="detailRisk"></div></div>
+            <div class="detail-row"><label>命中敏感词</label><div class="val" id="detailWords"></div></div>
+            <div class="detail-row"><label>内容片段</label><div class="val" id="detailContent"></div></div>
+            <div class="detail-row"><label>创建时间</label><div class="val" id="detailTime"></div></div>
+            <div class="detail-row">
+                <label>AI 风险分析</label>
+                <div class="ai-box" id="detailAi">尚未分析 | <a href="javascript:void(0)" onclick="doAiAnalyze()" style="color:#4f46e5;">触发AI分析</a></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-default" onclick="closeDetailModal()">关闭</button>
+            <button class="btn btn-warning" id="btnIgnore" onclick="handleAlert(currentAlertId, 2)">忽略</button>
+            <button class="btn btn-success" id="btnHandle" onclick="handleAlert(currentAlertId, 1)">标记已处理</button>
+        </div>
+    </div>
+</div>
+
+<script>
+var currentAlertId = 0;
+
+function getXsrfToken() {
+    var inputs = document.querySelectorAll('input[name="_xsrf"]');
+    return inputs.length > 0 ? inputs[0].value : '';
+}
+
+function doSearch() {
+    var kw = document.getElementById('keywordInput').value;
+    var st = document.getElementById('sourceTypeSelect').value;
+    var rl = document.getElementById('riskLevelSelect').value;
+    var sf = document.getElementById('statusSelect').value;
+    window.location.href = '/admin/security-alert?keyword=' + encodeURIComponent(kw)
+        + '&source_type=' + encodeURIComponent(st)
+        + '&risk_level=' + rl + '&status_filter=' + sf;
+}
+
+function viewDetail(id) {
+    currentAlertId = id;
+    var body = 'action=view&id=' + id + '&_xsrf=' + getXsrfToken();
+    fetch('/admin/security-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-XSRFToken': getXsrfToken() },
+        body: body
+    }).then(function(r){ return r.json(); })
+    .then(function(res){
+        if(res.status !== 'success') { alert(res.message); return; }
+        var d = res.data;
+        var sourceNames = {conversation:'用户对话', watch_record:'瞭望采集', data_warehouse:'数据仓库'};
+        document.getElementById('detailId').textContent = d.id;
+        document.getElementById('detailSource').textContent = sourceNames[d.source_type] || d.source_type;
+        document.getElementById('detailUser').textContent = d.username || '无';
+        var riskLabels = {1:'低风险',2:'中风险',3:'高风险'};
+        document.getElementById('detailRisk').textContent = riskLabels[d.risk_level] || d.risk_level;
+        var words = d.matched_words || [];
+        document.getElementById('detailWords').innerHTML = words.map(function(w){
+            return '<span class="word-chip">' + w.word + '(' + w.category + ')</span>';
+        }).join(' ');
+        document.getElementById('detailContent').textContent = d.content_snippet || '无';
+        document.getElementById('detailTime').textContent = d.created_at || '';
+        document.getElementById('detailAi').innerHTML = d.ai_analysis || '尚未分析 | <a href="javascript:void(0)" onclick="doAiAnalyze()" style="color:#4f46e5;">触发AI分析</a>';
+        var st = d.status || 0;
+        document.getElementById('btnHandle').style.display = st === 0 ? '' : 'none';
+        document.getElementById('btnIgnore').style.display = st === 0 ? '' : 'none';
+        document.getElementById('detailModal').classList.add('show');
+    });
+}
+
+function closeDetailModal() {
+    document.getElementById('detailModal').classList.remove('show');
+}
+
+function handleAlert(id, status) {
+    var body = 'action=handle&id=' + id + '&status=' + status + '&_xsrf=' + getXsrfToken();
+    fetch('/admin/security-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-XSRFToken': getXsrfToken() },
+        body: body
+    }).then(function(r){ return r.json(); }).then(function(data){
+        alert(data.message);
+        if(data.status === 'success') window.location.reload();
+    });
+}
+
+function doAiAnalyze() {
+    if(!currentAlertId) return;
+    var el = document.getElementById('detailAi');
+    el.innerHTML = 'AI 分析中...';
+    var body = 'action=ai_analyze&id=' + currentAlertId + '&_xsrf=' + getXsrfToken();
+    fetch('/admin/security-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-XSRFToken': getXsrfToken() },
+        body: body
+    }).then(function(r){ return r.json(); }).then(function(res){
+        if(res.status === 'success'){
+            el.innerHTML = res.data;
+        } else {
+            el.innerHTML = 'AI分析失败: ' + (res.message || res.data || '未知错误');
+        }
+    });
+}
+</script>
+{% end %}

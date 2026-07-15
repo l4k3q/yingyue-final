@@ -15,8 +15,10 @@ from app.controllers.admin import (
     AdminRoleHandler, AdminRoleFunctionsHandler, AdminWatchHandler,
     AdminWatchSourceHandler, AdminDataHandler, AdminCollectionHandler,
     AdminDigitalEmployeeHandler, AdminModelHandler, AdminModelTestHandler,
-    AdminDashboardHandler, AdminSentimentHandler
+    AdminDashboardHandler, AdminSentimentHandler,
+    AdminSensitiveWordHandler, AdminSecurityAlertHandler,
 )
+from app.controllers.sentiment_api import SentimentAPIHandler
 from app.models.db import init_db
 
 
@@ -67,6 +69,11 @@ def webapp():
         (r"/admin/model/test", AdminModelTestHandler),
         (r"/admin/dashboard", AdminDashboardHandler),
         (r"/admin/sentiment", AdminSentimentHandler),
+        (r"/admin/sensitive-word", AdminSensitiveWordHandler),
+        (r"/admin/security-alert", AdminSecurityAlertHandler),
+
+        # ========== 舆情大屏 API 路由 ==========
+        (r"/api/sentiment", SentimentAPIHandler),
     ],
         **settings
     )

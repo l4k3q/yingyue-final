@@ -112,7 +112,7 @@
 layui.use(['tree', 'nav'], function() {
     var tree = layui.tree;
     
-    var treeData = {{ function_tree_json }};
+    var treeData = {% raw function_tree_json %};
     
     tree.render({
         elem: '#menuTree',

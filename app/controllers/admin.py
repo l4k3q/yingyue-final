@@ -11,6 +11,8 @@ from app.models.watch import WatchSourceRepository, WatchRecordRepository, Watch
 from app.models.model import AIModelRepository, AIModelService
 from app.models.warehouse import DataWarehouseRepository, DeepCollectTaskRepository, DeepCollectService
 from app.models.digital_employee import DigitalEmployeeRepository, DigitalEmployeeService
+from app.models.sensitive_word import SensitiveWordRepository
+from app.models.security_alert import SecurityAlertRepository, SecurityAlertService
 
 
 class AdminBaseHandler(tornado.web.RequestHandler):
@@ -252,15 +254,27 @@ class AdminWatchHandler(AdminBaseHandler):
             keyword = self.get_body_argument("keyword", "")
             source_ids = self.get_body_argument("source_ids", "")
             source_ids = [int(s) for s in source_ids.split(",") if s.strip()]
-            
+
             for source_id in source_ids:
                 html_content = WatchCollector.collect(source_id, keyword, page=1)
                 if html_content and "采集失败" not in html_content:
                     articles = WatchCollector.parse_baidu_news(html_content)
                     WatchRecordRepository.create_record(source_id, keyword, page=1, data=json.dumps(articles), status=1)
+                    scan_text = keyword + " " + " ".join([
+                        a.get("title", "") + " " + a.get("description", "")
+                        for a in (articles if isinstance(articles, list) else [])
+                    ])
+                    is_safe, matched = SensitiveWordRepository.scan(scan_text)
+                    SensitiveWordRepository.create_scan_log("watch_record", 0, scan_text, is_safe, len(matched))
+                    if not is_safe:
+                        risk = SensitiveWordRepository.highest_risk_level(matched)
+                        SecurityAlertRepository.create_alert(
+                            "watch_record", 0, 0, "",
+                            matched, scan_text[:300], risk,
+                        )
                 else:
                     WatchRecordRepository.create_record(source_id, keyword, page=1, data=html_content or "", status=0)
-            
+
             sources = WatchSourceRepository.get_enabled_sources()
             records, total = WatchRecordRepository.get_records(page=1, page_size=36)
             processed_records = self._process_records(records)
@@ -385,14 +399,21 @@ class AdminDataHandler(AdminBaseHandler):
                 articles = json.loads(articles_json)
                 records = []
                 for article in articles:
+                    title = article.get("title", "")
+                    summary = article.get("summary", article.get("description", ""))
+                    scan_text = f"{title} {summary} {keyword}"
+                    is_safe, matched = SensitiveWordRepository.scan(scan_text)
+                    SensitiveWordRepository.create_scan_log("data_warehouse", 0, scan_text, is_safe, len(matched))
+                    if not is_safe:
+                        risk = SensitiveWordRepository.highest_risk_level(matched)
+                        SecurityAlertRepository.create_alert(
+                            "data_warehouse", 0, 0, "",
+                            matched, scan_text[:300], risk,
+                        )
                     records.append((
-                        article.get("title", ""),
-                        article.get("summary", article.get("description", "")),
-                        "",
+                        title, summary, "",
                         article.get("url", ""),
-                        source_name,
-                        0,
-                        keyword,
+                        source_name, 0, keyword,
                         article.get("image_url", article.get("image", ""))
                     ))
                 DataWarehouseRepository.add_records(records)
@@ -659,30 +680,39 @@ class AdminModelTestHandler(AdminBaseHandler):
         
         try:
             for chunk in AIModelService.chat_completion(model, messages):
+                if chunk.get("error"):
+                    self.write("data: " + json.dumps({
+                        'type': 'error',
+                        'message': chunk.get("message", "API 请求失败"),
+                        'status_code': chunk.get("status_code", 0),
+                    }) + "\n\n")
+                    self.flush()
+                    break
                 if "choices" in chunk and chunk["choices"]:
                     delta = chunk["choices"][0].get("delta", {})
                     if "content" in delta:
                         content = delta["content"]
                         full_content += content
                         completion_tokens += AIModelService.estimate_tokens(content)
-                        self.write(f"data: {json.dumps({
+                        self.write("data: " + json.dumps({
                             'type': 'token',
                             'content': content,
                             'prompt_tokens': prompt_tokens,
                             'completion_tokens': completion_tokens,
                             'total_tokens': prompt_tokens + completion_tokens
-                        })}\n\n")
+                        }) + "\n\n")
                         self.flush()
-            self.write(f"data: {json.dumps({
+            self.write("data: " + json.dumps({
                 'type': 'done',
                 'content': full_content,
                 'prompt_tokens': prompt_tokens,
                 'completion_tokens': completion_tokens,
                 'total_tokens': prompt_tokens + completion_tokens
-            })}\n\n")
-            AIModelRepository.update_tokens(model_id, prompt_tokens, completion_tokens)
+            }) + "\n\n")
+            if full_content:
+                AIModelRepository.update_tokens(model_id, prompt_tokens, completion_tokens)
         except Exception as e:
-            self.write(f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n")
+            self.write("data: " + json.dumps({'type': 'error', 'message': str(e)}) + "\n\n")
         self.finish()
 
 
@@ -693,4 +723,112 @@ class AdminDashboardHandler(AdminBaseHandler):
 
 class AdminSentimentHandler(AdminBaseHandler):
     def get(self):
-        self.render("admin/sentiment.html", title="舆情大屏")
+        stats = SecurityAlertRepository.get_stats()
+        scan_stats = SensitiveWordRepository.get_scan_stats()
+        source_dist = SecurityAlertRepository.get_source_distribution()
+        risk_dist = SecurityAlertRepository.get_risk_level_distribution()
+        trend = SecurityAlertRepository.get_trend(7)
+        top_words = SecurityAlertRepository.get_top_matched_words(10)
+        recent_alerts = SecurityAlertRepository.get_recent_alerts(5)
+        self.render(
+            "admin/sentiment.html",
+            title="舆情大屏",
+            stats=stats,
+            scan_stats=scan_stats,
+            source_dist=json.dumps(source_dist, ensure_ascii=False),
+            risk_dist=json.dumps(risk_dist, ensure_ascii=False),
+            trend=json.dumps(trend, ensure_ascii=False),
+            top_words=json.dumps(top_words, ensure_ascii=False),
+            recent_alerts=recent_alerts,
+        )
+
+
+class AdminSensitiveWordHandler(AdminBaseHandler):
+    def get(self):
+        page = int(self.get_query_argument("page", 1))
+        keyword = self.get_query_argument("keyword", "")
+        category = self.get_query_argument("category", "")
+        words, total = SensitiveWordRepository.get_words(page=page, page_size=20, keyword=keyword, category=category)
+        categories = SensitiveWordRepository.get_categories()
+        self.render(
+            "admin/sensitive_word.html",
+            title="敏感词管理",
+            words=words, total=total, page=page,
+            keyword=keyword, category=category, categories=categories,
+        )
+
+    def post(self):
+        action = self.get_body_argument("action", "")
+        if action == "add":
+            word = self.get_body_argument("word", "")
+            category = self.get_body_argument("category", "通用")
+            severity = int(self.get_body_argument("severity", 1))
+            patterns = self.get_body_argument("patterns", "")
+            if SensitiveWordRepository.create_word(word, category, severity, patterns):
+                self.write(json.dumps({"status": "success", "message": "添加成功"}))
+            else:
+                self.write(json.dumps({"status": "error", "message": "敏感词已存在"}))
+        elif action == "edit":
+            word_id = int(self.get_body_argument("id", 0))
+            word = self.get_body_argument("word", "")
+            category = self.get_body_argument("category", "通用")
+            severity = int(self.get_body_argument("severity", 1))
+            patterns = self.get_body_argument("patterns", "")
+            if SensitiveWordRepository.update_word(word_id, word, category, severity, patterns):
+                self.write(json.dumps({"status": "success", "message": "更新成功"}))
+            else:
+                self.write(json.dumps({"status": "error", "message": "敏感词已存在或更新失败"}))
+        elif action == "delete":
+            word_id = int(self.get_body_argument("id", 0))
+            SensitiveWordRepository.delete_word(word_id)
+            self.write(json.dumps({"status": "success", "message": "删除成功"}))
+        elif action == "toggle":
+            word_id = int(self.get_body_argument("id", 0))
+            status = int(self.get_body_argument("status", 0))
+            SensitiveWordRepository.toggle_status(word_id, status)
+            self.write(json.dumps({"status": "success", "message": "状态更新成功"}))
+        elif action == "batch_import":
+            words_text = self.get_body_argument("words_text", "")
+            added, skipped = SensitiveWordRepository.batch_import(words_text)
+            self.write(json.dumps({"status": "success", "message": f"导入完成，成功 {added} 条，跳过 {skipped} 条"}))
+
+
+class AdminSecurityAlertHandler(AdminBaseHandler):
+    def get(self):
+        page = int(self.get_query_argument("page", 1))
+        keyword = self.get_query_argument("keyword", "")
+        source_type = self.get_query_argument("source_type", "")
+        risk_level = int(self.get_query_argument("risk_level", 0))
+        status_filter = int(self.get_query_argument("status_filter", -1))
+        alerts, total = SecurityAlertRepository.get_alerts(
+            page=page, page_size=20, keyword=keyword,
+            source_type=source_type, risk_level=risk_level, status_filter=status_filter,
+        )
+        stats = SecurityAlertRepository.get_stats()
+        self.render(
+            "admin/security_alert.html",
+            title="预警记录",
+            alerts=alerts, total=total, page=page,
+            keyword=keyword, source_type=source_type,
+            risk_level=risk_level, status_filter=status_filter,
+            stats=stats,
+        )
+
+    def post(self):
+        action = self.get_body_argument("action", "")
+        if action == "handle":
+            alert_id = int(self.get_body_argument("id", 0))
+            status = int(self.get_body_argument("status", 1))
+            SecurityAlertRepository.update_alert_status(alert_id, status)
+            self.write(json.dumps({"status": "success", "message": "处理成功"}))
+        elif action == "ai_analyze":
+            alert_id = int(self.get_body_argument("id", 0))
+            analysis = SecurityAlertService.analyze_risk(alert_id)
+            self.write(json.dumps({"status": "success", "data": analysis}, ensure_ascii=False))
+        elif action == "view":
+            alert_id = int(self.get_body_argument("id", 0))
+            alert = SecurityAlertRepository.get_alert_by_id(alert_id)
+            if alert:
+                self.write(json.dumps({"status": "success", "data": alert}, ensure_ascii=False))
+            else:
+                self.write(json.dumps({"status": "error", "message": "预警不存在"}))
