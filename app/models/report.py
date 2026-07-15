@@ -129,21 +129,31 @@ class ReportService:
             },
             "grid": {
                 "left": "3%",
-                "right": "4%",
-                "bottom": "3%",
+                "right": "8%",
+                "bottom": "15%",
+                "top": "15%",
                 "containLabel": True
             },
             "xAxis": {
                 "type": "category",
                 "data": categories,
                 "axisLabel": {
-                    "rotate": 45,
-                    "fontSize": 12
+                    "rotate": 35,
+                    "fontSize": 11,
+                    "interval": 0,
+                    "overflow": "truncate",
+                    "width": 100
                 }
             },
             "yAxis": {
                 "type": "value"
             },
+            "dataZoom": [{
+                "type": "slider",
+                "show": len(categories) > 15,
+                "start": 0,
+                "end": 100
+            }] if len(categories) > 15 else [],
             "series": [{
                 "name": value_col,
                 "type": "bar",
@@ -187,8 +197,9 @@ class ReportService:
             },
             "grid": {
                 "left": "3%",
-                "right": "4%",
-                "bottom": "3%",
+                "right": "8%",
+                "bottom": "15%",
+                "top": "15%",
                 "containLabel": True
             },
             "xAxis": {
@@ -196,13 +207,22 @@ class ReportService:
                 "boundaryGap": False,
                 "data": categories,
                 "axisLabel": {
-                    "rotate": 45,
-                    "fontSize": 12
+                    "rotate": 35,
+                    "fontSize": 11,
+                    "interval": 0,
+                    "overflow": "truncate",
+                    "width": 100
                 }
             },
             "yAxis": {
                 "type": "value"
             },
+            "dataZoom": [{
+                "type": "slider",
+                "show": len(categories) > 15,
+                "start": 0,
+                "end": 100
+            }] if len(categories) > 15 else [],
             "series": [{
                 "name": value_col,
                 "type": "line",
@@ -254,34 +274,44 @@ class ReportService:
                 "formatter": "{b}: {c} ({d}%)"
             },
             "legend": {
-                "orient": "vertical",
-                "left": "left",
-                "top": "middle"
+                "type": "scroll",
+                "orient": "horizontal",
+                "bottom": "0",
+                "left": "center",
+                "textStyle": {"fontSize": 11},
+                "itemWidth": 10,
+                "itemHeight": 10,
+                "itemGap": 12
             },
             "series": [{
                 "name": value_col,
                 "type": "pie",
-                "radius": ["40%", "70%"],
-                "center": ["50%", "50%"],
+                "radius": ["45%", "75%"],
+                "center": ["50%", "45%"],
                 "avoidLabelOverlap": True,
                 "itemStyle": {
-                    "borderRadius": 10,
+                    "borderRadius": 6,
                     "borderColor": "#fff",
                     "borderWidth": 2
                 },
                 "label": {
                     "show": True,
-                    "formatter": "{b}\n{d}%"
+                    "fontSize": 11,
+                    "formatter": "{b} {d}%",
+                    "overflow": "truncate",
+                    "width": 80
                 },
                 "emphasis": {
                     "label": {
                         "show": True,
-                        "fontSize": 14,
+                        "fontSize": 13,
                         "fontWeight": "bold"
                     }
                 },
                 "labelLine": {
-                    "show": True
+                    "show": True,
+                    "length": 15,
+                    "length2": 20
                 },
                 "data": pie_data,
                 "color": colors
