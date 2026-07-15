@@ -207,6 +207,11 @@ class DBQueryService:
             return {"success": False, "error": "SQL语句不安全"}
         
         try:
+            # 只取第一个 SQL 语句，防止多语句执行错误
+            sql = sql.split(";")[0].strip()
+            if not sql:
+                return {"success": False, "error": "SQL语句为空"}
+
             with get_connection() as conn:
                 cursor = conn.execute(sql)
                 columns = [desc[0] for desc in cursor.description] if cursor.description else []

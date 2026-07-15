@@ -137,7 +137,11 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
 
         self.write_message({"type": "typing", "data": f"正在分析意图: {IntentService.INTENT_TYPES.get(intent, intent)}..."})
 
-        if intent == "digital_employee":
+        # 检测天气相关关键词 → 自动路由到 @天气 数字员工
+        weather_keywords = ["天气", "气温", "温度", "下雨", "刮风", "湿度", "晴", "阴", "多云", "下雪", "台风"]
+        if intent == "general_chat" and any(kw in content for kw in weather_keywords):
+            self.handle_employee_message("天气", content)
+        elif intent == "digital_employee":
             employee_name = params.get("employee_name", "")
             args = params.get("args", "")
             self.handle_employee_message(employee_name, args)
