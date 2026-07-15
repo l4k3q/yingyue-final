@@ -379,3 +379,45 @@ def init_db():
                 VALUES (?,?,?,?,?,?)""",
                 ("采集专员", "collector", 1, 1, "你是采集专员，负责网页内容深度采集。URL: {url}", "网页内容深度采集")
             )
+
+            music_card = """<div class="music-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 20px; color: #fff; min-width: 300px;">
+                <div style="display: flex; gap: 16px; align-items: center;">
+                    <div style="flex-shrink: 0; width: 100px; height: 100px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
+                        <img src="{artwork_url}" alt="专辑封面" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23444%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2255%22 text-anchor=%22middle%22 fill=%22%23999%22 font-size=%2214%22>🎵</text></svg>';">
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 18px; font-weight: 700; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🎵 {track_name}</div>
+                        <div style="font-size: 14px; opacity: 0.9; margin-bottom: 4px;">👤 {artist_name}</div>
+                        <div style="font-size: 13px; opacity: 0.75;">💿 {collection_name}</div>
+                    </div>
+                </div>
+                <div style="margin-top: 14px; display: flex; justify-content: space-around; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 12px; font-size: 13px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.7;">风格</div>
+                        <div style="font-weight: 500;">{genre}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.7;">时长</div>
+                        <div style="font-weight: 500;">{duration}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.7;">价格</div>
+                        <div style="font-weight: 500;">{price}</div>
+                    </div>
+                </div>
+                <div style="margin-top: 10px; text-align: center;">
+                    <a href="{track_url}" target="_blank" style="color: #fff; text-decoration: none; font-size: 12px; opacity: 0.8; border: 1px solid rgba(255,255,255,0.3); border-radius: 20px; padding: 4px 16px; display: inline-block;">🎧 在 iTunes 中打开</a>
+                </div>
+            </div>"""
+
+            conn.execute(
+                """INSERT INTO digital_employees (name, code_name, type, api_url, api_method, api_params, card_template, description)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                ("随机音乐", "music", 2, "https://itunes.apple.com/search", "GET", '{"limit": "10", "entity": "song"}', music_card, "随机推荐一首歌曲，支持指定风格或关键词")
+            )
+
+            conn.execute(
+                """INSERT INTO digital_employees (name, code_name, type, model_id, prompt, description)
+                VALUES (?,?,?,?,?,?)""",
+                ("文案写作助手", "copywriter", 1, 1, "你是一位资深的文案写作专家，擅长各类商业文案创作。你可以帮助用户撰写：\n- 广告文案（品牌slogan、产品描述、营销文案）\n- 社交媒体内容（微信公众号、微博、小红书文案）\n- 商业文档（商业计划书、融资BP、公司介绍）\n- 创意文案（品牌故事、软文、新闻稿）\n- 视频脚本（短视频、宣传片、口播文案）\n\n请根据用户需求，提供专业、高质量、可直接使用的文案内容。注意：\n1. 文案需符合目标平台的风格和规范\n2. 注意版权合规，避免抄袭\n3. 输出结构清晰，标题醒目\n4. 可使用emoji增强可读性（社交媒体文案）\n5. 字数根据用户要求灵活调整\n\n用户需求：{query}", "专业的商业文案写作助手")
+            )

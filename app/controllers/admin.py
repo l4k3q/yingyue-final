@@ -665,21 +665,23 @@ class AdminModelTestHandler(AdminBaseHandler):
                         content = delta["content"]
                         full_content += content
                         completion_tokens += AIModelService.estimate_tokens(content)
-                        self.write(f"data: {json.dumps({
+                        token_data = {
                             'type': 'token',
                             'content': content,
                             'prompt_tokens': prompt_tokens,
                             'completion_tokens': completion_tokens,
                             'total_tokens': prompt_tokens + completion_tokens
-                        })}\n\n")
+                        }
+                        self.write(f"data: {json.dumps(token_data)}\n\n")
                         self.flush()
-            self.write(f"data: {json.dumps({
+            done_data = {
                 'type': 'done',
                 'content': full_content,
                 'prompt_tokens': prompt_tokens,
                 'completion_tokens': completion_tokens,
                 'total_tokens': prompt_tokens + completion_tokens
-            })}\n\n")
+            }
+            self.write(f"data: {json.dumps(done_data)}\n\n")
             AIModelRepository.update_tokens(model_id, prompt_tokens, completion_tokens)
         except Exception as e:
             self.write(f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n")

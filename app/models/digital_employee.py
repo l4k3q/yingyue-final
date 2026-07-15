@@ -1,4 +1,5 @@
 import json
+import random
 import sqlite3
 import requests
 import urllib.parse
@@ -271,6 +272,12 @@ class DigitalEmployeeService:
                 url_parts = urllib.parse.urlparse(api_url)
                 path = urllib.parse.quote(url_parts.path, safe='/')
                 api_url = urllib.parse.urlunparse((url_parts.scheme, url_parts.netloc, path, url_parts.params, url_parts.query, url_parts.fragment))
+            elif employee.get("code_name") == "music":
+                random_terms = ["hot", "top", "love", "new", "popular", "best", "summer", "party", "dance",
+                                "chill", "happy", "sad", "rock", "jazz", "classic", "hiphop", "pop", "fresh",
+                                "cool", "trending", "golden", "viral", "soul", "dream", "star"]
+                query = params.get("query", "").strip() if params else ""
+                query_params["term"] = query if query else random.choice(random_terms)
             else:
                 query_params.update(params)
                 if isinstance(body, dict):
@@ -327,6 +334,45 @@ class DigitalEmployeeService:
                             "type": "api",
                             "raw": response.text
                         }
+                    except (IndexError, KeyError):
+                        pass
+
+                if employee.get("code_name") == "music" and isinstance(result, dict):
+                    try:
+                        results = result.get("results", [])
+                        if results:
+                            song = random.choice(results)
+                            track_name = song.get("trackName", "未知歌曲")
+                            artist_name = song.get("artistName", "未知歌手")
+                            collection_name = song.get("collectionName", "未知专辑")
+                            artwork_url = song.get("artworkUrl100", "")
+                            artwork_url = artwork_url.replace("100x100bb", "300x300bb") if artwork_url else ""
+                            preview_url = song.get("previewUrl", "")
+                            track_url = song.get("trackViewUrl", "")
+                            genre = song.get("primaryGenreName", "未知风格")
+                            track_time = song.get("trackTimeMillis", 0)
+                            minutes = track_time // 60000
+                            seconds = (track_time % 60000) // 1000
+                            duration = f"{minutes}:{seconds:02d}"
+                            price = song.get("trackPrice", 0)
+                            currency = song.get("currency", "USD")
+
+                            return {
+                                "success": True,
+                                "content": {
+                                    "track_name": track_name,
+                                    "artist_name": artist_name,
+                                    "collection_name": collection_name,
+                                    "artwork_url": artwork_url,
+                                    "preview_url": preview_url,
+                                    "track_url": track_url,
+                                    "genre": genre,
+                                    "duration": duration,
+                                    "price": f"{price} {currency}" if price else "免费"
+                                },
+                                "type": "api",
+                                "raw": response.text
+                            }
                     except (IndexError, KeyError):
                         pass
                 
