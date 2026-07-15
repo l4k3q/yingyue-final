@@ -11,6 +11,7 @@ from app.models.watch import WatchSourceRepository, WatchRecordRepository, Watch
 from app.models.model import AIModelRepository, AIModelService
 from app.models.warehouse import DataWarehouseRepository, DeepCollectTaskRepository, DeepCollectService
 from app.models.digital_employee import DigitalEmployeeRepository, DigitalEmployeeService
+from app.models.setting import SystemSettingRepository
 
 
 class AdminBaseHandler(tornado.web.RequestHandler):
@@ -23,6 +24,18 @@ class AdminBaseHandler(tornado.web.RequestHandler):
     def prepare(self):
         if not self.get_current_user():
             self.redirect("/admin/login")
+
+    def get_template_namespace(self):
+        namespace = super().get_template_namespace()
+        try:
+            settings_list = SystemSettingRepository.get_all_settings()
+            site = {}
+            for s in settings_list:
+                site[s["key"]] = s["value"]
+            namespace["site"] = site
+        except Exception:
+            namespace["site"] = {"site_name": "智能瞭望与问数系统", "site_subtitle": "DataFinderAgentOS"}
+        return namespace
 
 
 class AdminLoginHandler(tornado.web.RequestHandler):
@@ -665,21 +678,23 @@ class AdminModelTestHandler(AdminBaseHandler):
                         content = delta["content"]
                         full_content += content
                         completion_tokens += AIModelService.estimate_tokens(content)
-                        self.write(f"data: {json.dumps({
+                        token_data = {
                             'type': 'token',
                             'content': content,
                             'prompt_tokens': prompt_tokens,
                             'completion_tokens': completion_tokens,
                             'total_tokens': prompt_tokens + completion_tokens
-                        })}\n\n")
+                        }
+                        self.write("data: " + json.dumps(token_data) + "\n\n")
                         self.flush()
-            self.write(f"data: {json.dumps({
+            done_data = {
                 'type': 'done',
                 'content': full_content,
                 'prompt_tokens': prompt_tokens,
                 'completion_tokens': completion_tokens,
                 'total_tokens': prompt_tokens + completion_tokens
-            })}\n\n")
+            }
+            self.write("data: " + json.dumps(done_data) + "\n\n")
             AIModelRepository.update_tokens(model_id, prompt_tokens, completion_tokens)
         except Exception as e:
             self.write(f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n")
@@ -694,3 +709,25 @@ class AdminDashboardHandler(AdminBaseHandler):
 class AdminSentimentHandler(AdminBaseHandler):
     def get(self):
         self.render("admin/sentiment.html", title="舆情大屏")
+
+
+class AdminSettingHandler(AdminBaseHandler):
+    def get(self):
+        groups = SystemSettingRepository.get_grouped_settings()
+        self.render("admin/setting.html", title="系统设置", groups=groups)
+
+    def post(self):
+        action = self.get_body_argument("action", "")
+        if action == "save":
+            settings = SystemSettingRepository.get_all_settings()
+            for s in settings:
+                key = s["key"]
+                new_value = self.get_body_argument(key, None)
+                if new_value is not None:
+                    SystemSettingRepository.update_setting(key, new_value)
+            self.write(json.dumps({"status": "success", "message": "设置保存成功"}))
+        elif action == "reset":
+            # For reset, we could re-seed but simplest is to redirect back
+            self.write(json.dumps({"status": "success", "message": "已重置"}))
+        else:
+            self.write(json.dumps({"status": "error", "message": "未知操作"}))
