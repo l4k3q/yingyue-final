@@ -170,15 +170,25 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
         
         try:
             # 智能提取城市名（天气员工需要纯城市名调用 wttr.in API）
+            # wttr.in 对中文城市名解析不稳定，使用中英映射
+            CITY_MAP = {
+                "成都": "Chengdu", "北京": "Beijing", "上海": "Shanghai", "深圳": "Shenzhen",
+                "广州": "Guangzhou", "杭州": "Hangzhou", "武汉": "Wuhan", "南京": "Nanjing",
+                "重庆": "Chongqing", "西安": "Xian", "天津": "Tianjin", "苏州": "Suzhou",
+                "长沙": "Changsha", "郑州": "Zhengzhou", "青岛": "Qingdao", "大连": "Dalian",
+                "厦门": "Xiamen", "福州": "Fuzhou", "昆明": "Kunming", "哈尔滨": "Harbin",
+                "沈阳": "Shenyang", "济南": "Jinan", "合肥": "Hefei", "南昌": "Nanchang",
+                "贵阳": "Guiyang", "南宁": "Nanning", "海口": "Haikou", "兰州": "Lanzhou",
+                "拉萨": "Lhasa", "乌鲁木齐": "Urumqi",
+            }
             if employee.get("code_name") == "weather" and args:
                 text = args.strip()
-                # 去除天气查询中常见的描述词，保留城市名
                 for word in ["近五天", "近三天", "今天", "明天", "天气预报", "天气", "气温", "温度", "的", "表格", "情况", "怎么样", "如何"]:
                     text = text.replace(word, "")
-                # 取剩余文本的前2-3个汉字作为城市名
                 import re as re_mod
                 city_match = re_mod.match(r'[一-鿿]{2,3}', text.strip())
-                city = city_match.group(0) if city_match else text.strip().split()[0] if text.strip().split() else text.strip()[:2]
+                city_cn = city_match.group(0) if city_match else text.strip()[:2]
+                city = CITY_MAP.get(city_cn, city_cn)  # 有英文名就用英文，否则用中文
             elif args:
                 parts = args.split()
                 city = parts[-1] if parts else args.strip()
