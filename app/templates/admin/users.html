@@ -1,0 +1,309 @@
+{% extends "../admin/base.html" %}
+{% block body %}
+<div class="admin-page">
+    <div class="page-header">
+        <h2>用户管理</h2>
+        <div class="header-actions">
+            <button class="layui-btn layui-btn-primary" onclick="showSearch()">
+                <i class="layui-icon layui-icon-search"></i> 搜索
+            </button>
+            {% if is_admin %}
+            <button class="layui-btn" onclick="showAddModal()">
+                <i class="layui-icon layui-icon-add-circle"></i> 新增用户
+            </button>
+            {% end %}
+        </div>
+    </div>
+
+    <div class="search-bar" id="searchBar">
+        <div class="layui-form-item">
+            <div class="layui-inline">
+                <label class="layui-form-label">关键词</label>
+                <div class="layui-input-inline">
+                    <input type="text" name="keyword" id="keyword" value="{{ keyword }}" placeholder="用户名/角色" class="layui-input">
+                </div>
+            </div>
+            <button class="layui-btn" onclick="doSearch()">搜索</button>
+            {% if keyword %}
+            <button class="layui-btn layui-btn-primary" onclick="clearSearch()">清除</button>
+            {% end %}
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="layui-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user["id"] }}</td>
+                    <td>{{ user["username"] }}</td>
+                    <td>{{ user["role_name"] if user["role_name"] else "-" }}</td>
+                    <td>
+                        {% if user["status"] == 1 %}
+                        <span class="layui-badge layui-bg-green">正常</span>
+                        {% else %}
+                        <span class="layui-badge layui-bg-red">禁用</span>
+                        {% end %}
+                    </td>
+                    <td>{{ user["created_at"] }}</td>
+                    <td>
+                        {% if is_admin and user['username'] != 'admin' %}
+                        <button class="layui-btn layui-btn-xs" onclick="showEditModal({{ user['id'] }}, '{{ user['username'] }}', {{ user['role_id'] }})">
+                            <i class="layui-icon layui-icon-edit"></i> 修改
+                        </button>
+                        <button class="layui-btn layui-btn-xs {% if user['status'] == 1 %}layui-btn-warm{% else %}layui-btn-normal{% end %}" 
+                                onclick="toggleStatus({{ user['id'] }}, {{ 0 if user['status'] == 1 else 1 }})">
+                            {% if user["status"] == 1 %}禁用{% else %}启用{% end %}
+                        </button>
+                        <button class="layui-btn layui-btn-xs layui-btn-danger" onclick="deleteUser({{ user['id'] }})">
+                            <i class="layui-icon layui-icon-delete"></i> 删除
+                        </button>
+                        {% elif user['username'] == 'admin' %}
+                        <button class="layui-btn layui-btn-xs layui-btn-normal" onclick="showChangePwdModal({{ user['id'] }})">
+                            <i class="layui-icon layui-icon-set"></i> 修改密码
+                        </button>
+                        <span class="layui-badge">超级管理员</span>
+                        {% else %}
+                        <span class="layui-badge layui-bg-gray">只读</span>
+                        {% end %}
+                    </td>
+                </tr>
+                {% end %}
+                {% if not users %}
+                <tr>
+                    <td colspan="6" class="text-center">暂无数据</td>
+                </tr>
+                {% end %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-container">
+        <div class="layui-laypage">
+            {% set pages = (total + 19) // 20 %}
+            {% if page > 1 %}
+            <a href="/admin/users?page={{ page-1 }}&keyword={{ keyword }}">上一页</a>
+            {% end %}
+            {% for p in range(1, pages+1) %}
+            {% if p == page %}
+            <span class="layui-laypage-curr"><em>{{ p }}</em></span>
+            {% else %}
+            <a href="/admin/users?page={{ p }}&keyword={{ keyword }}">{{ p }}</a>
+            {% end %}
+            {% end %}
+            {% if page < pages %}
+            <a href="/admin/users?page={{ page+1 }}&keyword={{ keyword }}">下一页</a>
+            {% end %}
+            <span>共 {{ total }} 条</span>
+        </div>
+    </div>
+</div>
+
+<div class="layui-modal" id="userModal">
+    <div class="layui-modal-content">
+        <div class="layui-modal-header">
+            <h3 id="modalTitle">新增用户</h3>
+            <button class="layui-close" onclick="closeModal()"></button>
+        </div>
+        <div class="layui-modal-body">
+            <form class="layui-form" id="userForm">
+                <input type="hidden" name="id" id="userId">
+                <div class="layui-form-item">
+                    <label class="layui-form-label">用户名</label>
+                    <div class="layui-input-block">
+                        <input type="text" name="username" id="username" required lay-verify="required" placeholder="请输入用户名" class="layui-input">
+                    </div>
+                </div>
+                <div class="layui-form-item password-field">
+                    <label class="layui-form-label">密码</label>
+                    <div class="layui-input-block">
+                        <input type="password" name="password" id="password" required lay-verify="required" placeholder="请输入密码" class="layui-input">
+                    </div>
+                </div>
+                <div class="layui-form-item">
+                    <label class="layui-form-label">角色</label>
+                    <div class="layui-input-block">
+                        <select name="role_id" id="role_id">
+                            {% for role in roles %}
+                            <option value="{{ role['id'] }}">{{ role['name'] }}</option>
+                            {% end %}
+                        </select>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="layui-modal-footer">
+            <button class="layui-btn layui-btn-primary" onclick="closeModal()">取消</button>
+            <button class="layui-btn" onclick="submitForm()">保存</button>
+        </div>
+    </div>
+</div>
+
+<div class="layui-modal" id="pwdModal">
+    <div class="layui-modal-content">
+        <div class="layui-modal-header">
+            <h3>修改密码</h3>
+            <button class="layui-close" onclick="closePwdModal()"></button>
+        </div>
+        <div class="layui-modal-body">
+            <form class="layui-form" id="pwdForm">
+                <input type="hidden" name="id" id="pwdUserId">
+                <div class="layui-form-item">
+                    <label class="layui-form-label">新密码</label>
+                    <div class="layui-input-block">
+                        <input type="password" name="password" id="newPassword" required lay-verify="required" placeholder="请输入新密码" class="layui-input">
+                    </div>
+                </div>
+                <div class="layui-form-item">
+                    <label class="layui-form-label">确认密码</label>
+                    <div class="layui-input-block">
+                        <input type="password" name="confirmPassword" id="confirmPassword" required lay-verify="required" placeholder="请确认新密码" class="layui-input">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="layui-modal-footer">
+            <button class="layui-btn layui-btn-primary" onclick="closePwdModal()">取消</button>
+            <button class="layui-btn" onclick="submitPwdForm()">确认修改</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function showSearch() {
+    document.getElementById('searchBar').style.display = document.getElementById('searchBar').style.display === 'none' ? 'block' : 'none';
+}
+
+function doSearch() {
+    var keyword = document.getElementById('keyword').value;
+    window.location.href = '/admin/users?keyword=' + encodeURIComponent(keyword);
+}
+
+function clearSearch() {
+    window.location.href = '/admin/users';
+}
+
+function showAddModal() {
+    document.getElementById('modalTitle').innerText = '新增用户';
+    document.getElementById('userId').value = '';
+    document.getElementById('username').value = '';
+    document.getElementById('password').value = '';
+    document.getElementById('password').parentElement.parentElement.style.display = 'block';
+    document.getElementById('userModal').style.display = 'block';
+}
+
+function showEditModal(id, username, roleId) {
+    document.getElementById('modalTitle').innerText = '修改用户';
+    document.getElementById('userId').value = id;
+    document.getElementById('username').value = username;
+    document.getElementById('role_id').value = roleId;
+    document.getElementById('password').parentElement.parentElement.style.display = 'none';
+    document.getElementById('userModal').style.display = 'block';
+}
+
+function closeModal() {
+    document.getElementById('userModal').style.display = 'none';
+}
+
+function submitForm() {
+    var id = document.getElementById('userId').value;
+    var action = id ? 'edit' : 'add';
+    var form = document.getElementById('userForm');
+    var formData = new FormData(form);
+    formData.append('action', action);
+    
+    fetch('/admin/users', {
+        method: 'POST',
+        body: formData
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (data.status === 'error') {
+            alert(data.message);
+        } else {
+            window.location.href = '/admin/users';
+        }
+    }).catch(function() {
+        window.location.href = '/admin/users';
+    });
+}
+
+function showChangePwdModal(id) {
+    document.getElementById('pwdUserId').value = id;
+    document.getElementById('newPassword').value = '';
+    document.getElementById('confirmPassword').value = '';
+    document.getElementById('pwdModal').style.display = 'block';
+}
+
+function closePwdModal() {
+    document.getElementById('pwdModal').style.display = 'none';
+}
+
+function submitPwdForm() {
+    var id = document.getElementById('pwdUserId').value;
+    var password = document.getElementById('newPassword').value;
+    var confirmPassword = document.getElementById('confirmPassword').value;
+    
+    if (password !== confirmPassword) {
+        alert('两次输入的密码不一致');
+        return;
+    }
+    
+    if (password.length < 6) {
+        alert('密码长度不能少于6位');
+        return;
+    }
+    
+    fetch('/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'action=change_pwd&id=' + id + '&password=' + encodeURIComponent(password)
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (data.status === 'success') {
+            alert(data.message);
+            closePwdModal();
+        } else {
+            alert(data.message);
+        }
+    }).catch(function() {
+        alert('修改失败，请重试');
+    });
+}
+
+function toggleStatus(id, status) {
+    if (confirm('确定要' + (status === 1 ? '启用' : '禁用') + '该用户吗？')) {
+        fetch('/admin/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=toggle&id=' + id + '&status=' + status
+        }).then(function() {
+            window.location.href = '/admin/users';
+        });
+    }
+}
+
+function deleteUser(id) {
+    if (confirm('确定要删除该用户吗？')) {
+        fetch('/admin/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=delete&id=' + id
+        }).then(function() {
+            window.location.href = '/admin/users';
+        });
+    }
+}
+</script>
+{% end %}

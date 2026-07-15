@@ -1,0 +1,8 @@
+database:
+  type: "sqlite"
+  path: "database/finderos.db"
+  row_factory: "sqlite3.Row"
+
+connection:
+  timeout: 30
+  check_same_thread: false

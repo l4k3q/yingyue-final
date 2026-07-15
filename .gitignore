@@ -1,0 +1,10 @@
+/database
+/docs
+/skills
+/temp
+/test
+/venv
+__pycache__/
+*.pyc
+*.pyo
+.Python

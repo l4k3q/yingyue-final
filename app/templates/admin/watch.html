@@ -1,0 +1,884 @@
+{% extends "../admin/base.html" %}
+{% block body %}
+<style>
+    .watch-container {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        height: calc(100vh - 50px);
+        padding: 0;
+    }
+    
+    .watch-section {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        padding: 16px;
+    }
+    
+    .section-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1D2129;
+        margin-bottom: 16px;
+        padding-left: 12px;
+        border-left: 3px solid #165DFF;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .zone-a {
+        flex-shrink: 0;
+    }
+    
+    .zone-a .section-content {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 10px 0;
+    }
+    
+    .search-form {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        width: 100%;
+        max-width: 700px;
+    }
+    
+    .search-input-wrap {
+        flex: 1;
+        position: relative;
+    }
+    
+    .search-input-wrap input {
+        width: 100%;
+        height: 44px;
+        font-size: 15px;
+        padding-left: 42px;
+        border-radius: 10px;
+        border: 2px solid #EBEEF5;
+        transition: all 0.3s;
+    }
+    
+    .search-input-wrap input:focus {
+        border-color: #165DFF;
+        box-shadow: 0 0 0 3px rgba(22, 93, 255, 0.1);
+    }
+    
+    .search-input-wrap .search-icon {
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 18px;
+        color: #86909C;
+    }
+    
+    .collect-btn {
+        height: 44px;
+        padding: 0 36px;
+        background: linear-gradient(135deg, #165DFF 0%, #0E42D2 100%);
+        border: none;
+        color: #fff;
+        border-radius: 10px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .collect-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(22, 93, 255, 0.4);
+    }
+    
+    .collect-btn:active {
+        transform: translateY(0);
+    }
+    
+    .zone-b {
+        flex-shrink: 0;
+    }
+    
+    .source-header-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #EBEEF5;
+    }
+    
+    .source-header-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    
+    .source-toggle-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #165DFF;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 4px 12px;
+        border-radius: 4px;
+    }
+    
+    .source-toggle-label i {
+        font-size: 14px;
+    }
+    
+    .source-toggle-desc {
+        font-size: 12px;
+        color: #86909C;
+        flex: 1;
+        min-width: 200px;
+    }
+    
+    .add-source-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        background: linear-gradient(135deg, #52C41A 0%, #389E0D 100%);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    
+    .add-source-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(82, 196, 26, 0.4);
+    }
+    
+    .zone-b {
+        flex-shrink: 0;
+        max-height: 180px;
+        overflow-y: auto;
+    }
+    
+    .source-card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 16px;
+        border: 2px solid #EBEEF5;
+        cursor: pointer;
+        transition: all 0.3s;
+        position: relative;
+    }
+    
+    .source-card:hover {
+        border-color: #C6E2FF;
+        background: #FAFCFF;
+    }
+    
+    .source-card.selected {
+        border-color: #165DFF;
+        background: #F0F5FF;
+    }
+    
+    .source-card-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .source-checkbox {
+        width: 20px;
+        height: 20px;
+        border: 2px solid #C9CDD4;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s;
+        flex-shrink: 0;
+    }
+    
+    .source-card.selected .source-checkbox {
+        background: #165DFF;
+        border-color: #165DFF;
+    }
+    
+    .source-checkbox i {
+        color: #fff;
+        font-size: 12px;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    
+    .source-card.selected .source-checkbox i {
+        opacity: 1;
+    }
+    
+    .source-info {
+        flex: 1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .source-name-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .source-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: #1D2129;
+    }
+    
+    .source-name-en {
+        font-size: 12px;
+        color: #86909C;
+        font-family: monospace;
+    }
+    
+    .source-tag {
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        background: #E8F8E6;
+        color: #52C41A;
+        font-weight: 500;
+    }
+    
+    .source-config-desc {
+        font-size: 12px;
+        color: #86909C;
+        margin-top: 8px;
+        padding-left: 32px;
+    }
+    
+    .source-params {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px dashed #EBEEF5;
+        padding-left: 32px;
+    }
+    
+    .params-title {
+        font-size: 12px;
+        color: #86909C;
+        margin-bottom: 12px;
+        font-weight: 500;
+    }
+    
+    .params-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        max-width: 400px;
+    }
+    
+    .param-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .param-label {
+        font-size: 11px;
+        color: #86909C;
+        font-weight: 500;
+    }
+    
+    .param-input {
+        width: 100%;
+        height: 32px;
+        padding: 0 10px;
+        border: 1px solid #EBEEF5;
+        border-radius: 6px;
+        font-size: 13px;
+        color: #1D2129;
+        transition: all 0.3s;
+    }
+    
+    .param-input:focus {
+        border-color: #165DFF;
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(22, 93, 255, 0.1);
+    }
+    
+    .source-desc {
+        font-size: 13px;
+        color: #86909C;
+        margin-top: 8px;
+        line-height: 1.4;
+        padding-left: 32px;
+    }
+    
+    .zone-c {
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .zone-c-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #EBEEF5;
+    }
+    
+    .select-all-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        background: #fff;
+        border: 1px solid #EBEEF5;
+        border-radius: 6px;
+        font-size: 13px;
+        color: #4E5969;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .select-all-btn:hover {
+        border-color: #165DFF;
+        color: #165DFF;
+    }
+    
+    .select-all-btn input {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+    }
+    
+    .save-to-warehouse-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 20px;
+        background: linear-gradient(135deg, #165DFF 0%, #0E42D2 100%);
+        border: none;
+        border-radius: 6px;
+        font-size: 13px;
+        color: #fff;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .save-to-warehouse-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(22, 93, 255, 0.4);
+    }
+    
+    .collection-grid {
+        flex: 1;
+        overflow-y: auto;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        padding-right: 8px;
+    }
+    
+    .collection-card {
+        background: #F7F8FA;
+        border-radius: 10px;
+        padding: 12px;
+        transition: all 0.3s;
+        cursor: pointer;
+        border: 1px solid #EBEEF5;
+        position: relative;
+        min-height: 90px;
+    }
+    
+    .collection-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+        border-color: #165DFF;
+    }
+    
+    .collection-card.selected {
+        border-color: #165DFF;
+        background: #F0F5FF;
+    }
+    
+    .card-checkbox {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 18px;
+        height: 18px;
+        border: 2px solid #C9CDD4;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+        z-index: 10;
+    }
+    
+    .card-checkbox:hover {
+        border-color: #165DFF;
+    }
+    
+    .collection-card.selected .card-checkbox {
+        background: #165DFF;
+        border-color: #165DFF;
+    }
+    
+    .card-checkbox::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 5px;
+        width: 5px;
+        height: 10px;
+        border: solid #fff;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    
+    .collection-card.selected .card-checkbox::after {
+        opacity: 1;
+    }
+    
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        padding-right: 28px;
+    }
+    
+    .card-source {
+        font-size: 12px;
+        color: #165DFF;
+        background: #E8F0FF;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+    }
+    
+    .card-status {
+        font-size: 12px;
+        color: #64BB5C;
+        background: #E8F8E6;
+        padding: 2px 8px;
+        border-radius: 4px;
+    }
+    
+    .card-status.error {
+        color: #F56C6C;
+        background: #FEF0F0;
+    }
+    
+    .card-title {
+        font-size: 14px;
+        color: #1D2129;
+        font-weight: 600;
+        line-height: 1.5;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        margin-bottom: 8px;
+    }
+    
+    .card-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #86909C;
+    }
+    
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        color: #86909C;
+    }
+    
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+        color: #C9CDD4;
+    }
+    
+    .empty-text {
+        font-size: 14px;
+    }
+    
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+    
+    .loading-content {
+        background: #fff;
+        padding: 32px;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #EBEEF5;
+        border-top-color: #165DFF;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 16px;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    
+    .loading-text {
+        font-size: 14px;
+        color: #4E5969;
+    }
+    
+    @media (max-width: 1024px) {
+        .collection-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .collection-grid {
+            grid-template-columns: 1fr;
+        }
+        .source-grid {
+            grid-template-columns: 1fr;
+        }
+        .search-form {
+            flex-direction: column;
+        }
+        .search-input-wrap {
+            width: 100%;
+        }
+        .collect-btn {
+            width: 100%;
+            justify-content: center;
+        }
+    }
+</style>
+
+<div class="watch-container">
+    <div class="watch-section zone-a">
+        <h3 class="section-title">
+            <i class="fas fa-search"></i> 搜索采集
+        </h3>
+        <div class="section-content">
+            <form id="collectForm" method="post" action="/admin/watch" class="search-form" onsubmit="return doCollect(event)">
+                <input type="hidden" name="action" value="collect">
+                <input type="hidden" name="source_ids" id="sourceIds">
+                {% module xsrf_form_html() %}
+                <div class="search-input-wrap">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" name="keyword" id="keyword" placeholder="请输入关键词，如：人工智能、科技新闻..." required>
+                </div>
+                <button type="submit" class="collect-btn">
+                <i class="fas fa-rocket"></i> 开始采集
+            </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="watch-section zone-b">
+        <h3 class="section-title">
+            <i class="fas fa-rss"></i> 采集源配置
+        </h3>
+        <div class="source-header-bar">
+            <div class="source-toggle-label">
+                <i class="fas fa-toggle-on"></i> 瞭源开关
+            </div>
+            <span class="source-toggle-desc">仅"启用"中的瞭源可参与采集，可为每个瞭源单独配置采集参数</span>
+            <button class="add-source-btn" onclick="window.open('/admin/watch/source', '_blank')">
+                <i class="fas fa-plus"></i> 添加新的瞭源
+            </button>
+        </div>
+        <div class="source-list" id="sourceList">
+            {% for source in sources %}
+            {% set params = {} %}
+            {% if source.get('params') %}
+            {% try %}
+            {% set params = json.loads(source['params']) %}
+            {% except %}
+            {% end %}
+            {% end %}
+            {% set page = params.get('page', 1) %}
+            {% set pagesize = params.get('pagesize', 20) %}
+            {% set step = params.get('step', 10) %}
+            <div class="source-card selected" data-id="{{ source['id'] }}" onclick="toggleSource(this)">
+                <div class="source-card-header">
+                    <div class="source-checkbox">
+                        <i class="fas fa-check"></i>
+                    </div>
+                    <div class="source-info">
+                        <div class="source-name-row">
+                            <span class="source-name">{{ source['name'] }}</span>
+                            {% if source.get('model_id') %}
+                            <span class="source-name-en">{{ source['model_id'] }}</span>
+                            {% end %}
+                        </div>
+                        <span class="source-tag">{{ source.get('model_id', source.get('name', '')).lower().replace(' ', '_') }}</span>
+                    </div>
+                </div>
+                {% if source.get('description') %}
+                <div class="source-config-desc">{{ source['description'] }}</div>
+                {% end %}
+                <div class="source-params">
+                    <div class="params-title">采集参数</div>
+                    <div class="params-grid">
+                        <div class="param-item">
+                            <span class="param-label">页数</span>
+                            <input type="number" class="param-input" value="{{ page }}" min="1" max="100">
+                        </div>
+                        <div class="param-item">
+                            <span class="param-label">每条条数</span>
+                            <input type="number" class="param-input" value="{{ pagesize }}" min="1" max="100">
+                        </div>
+                        <div class="param-item">
+                            <span class="param-label">步长</span>
+                            <input type="number" class="param-input" value="{{ step }}" min="1" max="50">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% end %}
+            {% if not sources %}
+            <div class="empty-state" style="padding: 30px;">
+                <div class="empty-icon"><i class="fas fa-rss"></i></div>
+                <div class="empty-text">暂无可用采集源，请先配置瞭源</div>
+            </div>
+            {% end %}
+        </div>
+    </div>
+
+    <div class="watch-section zone-c">
+        <h3 class="section-title">
+            <i class="fas fa-newspaper"></i> 采集结果
+        </h3>
+        <div class="zone-c-header">
+            <button class="select-all-btn" onclick="toggleSelectAll(event)">
+                <input type="checkbox" id="selectAll">
+                <span>全选</span>
+            </button>
+            <button class="save-to-warehouse-btn" onclick="saveSelectedToWarehouse()">
+                <i class="fas fa-database"></i> 保存到数据仓库
+            </button>
+        </div>
+        <div class="collection-grid" id="collectionGrid">
+            <!-- DEBUG: records count = {{ len(records) if records else 0 }} -->
+            {% if records %}
+            {% for record in records %}
+            {% for article in record.get('articles', []) %}
+            <div class="collection-card" data-source="{{ record.get('source_name', '') }}" data-keyword="{{ record.get('keyword', '') }}" data-title="{{ article.get('title', '') }}" data-url="{{ article.get('url', '') }}" data-summary="{{ article.get('summary', article.get('description', '')) }}" data-image="{{ article.get('image_url', article.get('image', '')) }}">
+                <div class="card-checkbox" onclick="toggleCardSelect(event, this)"></div>
+                <div class="card-header">
+                    <span class="card-source">{{ record.get('source_name', '') }}</span>
+                    <span class="card-status{% if record.get('status') == 0 %} error{% end %}">
+                        {{ '成功' if record.get('status') == 1 else '失败' }}
+                    </span>
+                </div>
+                <div class="card-title">{{ article.get('title', '') }}</div>
+                <div class="card-meta">
+                    <span>{{ record.get('keyword', '') }}</span>
+                    <span>{{ record.get('created_at', '')[:16] }}</span>
+                </div>
+            </div>
+            {% end %}
+            {% end %}
+            {% else %}
+            <div class="empty-state" style="grid-column: 1/-1;">
+                <div class="empty-icon"><i class="fas fa-newspaper"></i></div>
+                <div class="empty-text">暂无采集结果，请输入关键词开始采集</div>
+            </div>
+            {% end %}
+        </div>
+    </div>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay" style="display: none;">
+    <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">正在采集数据...</div>
+    </div>
+</div>
+
+<script>
+var selectedSources = [];
+var selectedArticles = [];
+
+function toggleSource(element) {
+    element.classList.toggle('selected');
+    var sourceId = element.getAttribute('data-id');
+    var index = selectedSources.indexOf(sourceId);
+    if (index > -1) {
+        selectedSources.splice(index, 1);
+    } else {
+        selectedSources.push(sourceId);
+    }
+}
+
+function doCollect(event) {
+    if (selectedSources.length === 0) {
+        alert('请至少选择一个采集源');
+        if (event) event.preventDefault();
+        return false;
+    }
+    document.getElementById('sourceIds').value = selectedSources.join(',');
+    return true;
+}
+
+function toggleCardSelect(event, checkbox) {
+    event.stopPropagation();
+    var card = checkbox.parentElement;
+    card.classList.toggle('selected');
+    
+    var title = card.getAttribute('data-title');
+    var index = selectedArticles.indexOf(title);
+    if (index > -1) {
+        selectedArticles.splice(index, 1);
+    } else {
+        selectedArticles.push(title);
+    }
+    
+    updateSelectAllCheckbox();
+}
+
+function toggleSelectAll(event) {
+    event.stopPropagation();
+    var checkbox = document.getElementById('selectAll');
+    var cards = document.querySelectorAll('.collection-card');
+    
+    cards.forEach(function(card) {
+        if (checkbox.checked) {
+            card.classList.add('selected');
+            var title = card.getAttribute('data-title');
+            if (selectedArticles.indexOf(title) === -1) {
+                selectedArticles.push(title);
+            }
+        } else {
+            card.classList.remove('selected');
+            var title = card.getAttribute('data-title');
+            var index = selectedArticles.indexOf(title);
+            if (index > -1) {
+                selectedArticles.splice(index, 1);
+            }
+        }
+    });
+}
+
+function updateSelectAllCheckbox() {
+    var checkbox = document.getElementById('selectAll');
+    var cards = document.querySelectorAll('.collection-card');
+    var allSelected = cards.length > 0 && Array.from(cards).every(function(card) {
+        return card.classList.contains('selected');
+    });
+    checkbox.checked = allSelected;
+}
+
+function getXsrfToken() {
+    var token = '';
+    var inputs = document.querySelectorAll('input[name="_xsrf"]');
+    if (inputs.length > 0) {
+        token = inputs[0].value;
+    }
+    return token;
+}
+
+function saveSelectedToWarehouse() {
+    var selectedCards = document.querySelectorAll('.collection-card.selected');
+    if (selectedCards.length === 0) {
+        alert('请至少选择一条采集结果');
+        return;
+    }
+    
+    var articles = [];
+    var sourceName = '';
+    var keyword = '';
+    
+    selectedCards.forEach(function(card) {
+        articles.push({
+            title: card.getAttribute('data-title'),
+            url: card.getAttribute('data-url'),
+            summary: card.getAttribute('data-summary'),
+            image_url: card.getAttribute('data-image')
+        });
+        sourceName = card.getAttribute('data-source');
+        keyword = card.getAttribute('data-keyword');
+    });
+    
+    var xsrfToken = getXsrfToken();
+    var formData = new FormData();
+    formData.append('action', 'save_to_warehouse');
+    formData.append('articles', JSON.stringify(articles));
+    formData.append('source_name', sourceName);
+    formData.append('keyword', keyword);
+    if (xsrfToken) {
+        formData.append('_xsrf', xsrfToken);
+    }
+    
+    fetch('/admin/data', {
+        method: 'POST',
+        body: formData
+    }).then(function(response) {
+        return response.text();
+    }).then(function(text) {
+        try {
+            var data = JSON.parse(text);
+            if (data.status === 'success') {
+                alert(data.message);
+                selectedCards.forEach(function(card) {
+                    card.classList.remove('selected');
+                });
+                selectedArticles = [];
+                document.getElementById('selectAll').checked = false;
+            } else {
+                alert('保存失败: ' + data.message);
+            }
+        } catch (e) {
+            alert('保存失败: ' + text);
+        }
+    }).catch(function(error) {
+        alert('保存失败: ' + error.message);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var items = document.querySelectorAll('.source-card');
+    items.forEach(function(item) {
+        selectedSources.push(item.getAttribute('data-id'));
+    });
+});
+</script>
+{% end %}

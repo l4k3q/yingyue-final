@@ -1,0 +1,797 @@
+{% extends "../admin/base.html" %}
+{% block body %}
+<div style="display:none;">{% module xsrf_form_html() %}</div>
+<style>
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .page-header h2 {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        margin: 0;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 12px;
+    }
+
+    .stats-row {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+    }
+
+    .stat-item {
+        text-align: center;
+    }
+
+    .stat-value {
+        font-size: 24px;
+        font-weight: 700;
+        color: #165DFF;
+    }
+
+    .stat-label {
+        font-size: 12px;
+        color: #86909C;
+    }
+
+    .search-bar {
+        background: #f9f9f9;
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+    }
+
+    .table-container {
+        overflow-x: auto;
+    }
+
+    .layui-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .layui-table th,
+    .layui-table td {
+        padding: 12px 16px;
+        text-align: left;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .layui-table th {
+        background: #f9f9f9;
+        font-weight: 600;
+        color: #333;
+    }
+
+    .layui-table tr:hover {
+        background: #fafafa;
+    }
+
+    .pagination-container {
+        text-align: right;
+        margin-top: 20px;
+    }
+
+    .layui-laypage {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .layui-laypage a,
+    .layui-laypage span {
+        padding: 6px 12px;
+        border-radius: 4px;
+        text-decoration: none;
+        color: #666;
+    }
+
+    .layui-laypage a:hover {
+        color: #165DFF;
+    }
+
+    .layui-laypage-curr {
+        background: #165DFF;
+        color: #fff;
+    }
+
+    .float-panel {
+        position: fixed;
+        right: 20px;
+        top: 100px;
+        width: 450px;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        z-index: 999;
+        overflow: hidden;
+    }
+
+    .float-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 18px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #fff;
+    }
+
+    .float-panel-header h4 {
+        margin: 0;
+        font-size: 14px;
+    }
+
+    .float-panel-body {
+        padding: 15px;
+        max-height: 600px;
+        overflow-y: auto;
+    }
+
+    .task-status-badge {
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .task-status-badge.pending { background: #F5F5F5; color: #999; }
+    .task-status-badge.running { background: #E8F0FF; color: #165DFF; }
+    .task-status-badge.completed { background: #E8F8E6; color: #52C41A; }
+    .task-status-badge.failed { background: #FEF0F0; color: #F56C6C; }
+
+    .progress-bar {
+        height: 8px;
+        background: #f0f0f0;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #165DFF, #52C41A);
+        border-radius: 4px;
+        transition: width 0.5s ease;
+    }
+
+    .log-container {
+        background: #f9f9f9;
+        border-radius: 6px;
+        padding: 12px;
+        max-height: 150px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+
+    .result-container {
+        background: #f0f7ff;
+        border-radius: 6px;
+        padding: 12px;
+        max-height: 200px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+
+    .deep-collect-btn {
+        transition: all 0.2s;
+    }
+
+    .deep-collect-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .detail-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 9999;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+        display: none;
+    }
+
+    .detail-modal.show {
+        display: flex;
+    }
+
+    .detail-modal-content {
+        background: #fff;
+        border-radius: 8px;
+        width: 100%;
+        max-width: 800px;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    .detail-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 20px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .detail-modal-header h3 {
+        margin: 0;
+        font-size: 16px;
+    }
+
+    .detail-modal-body {
+        padding: 20px;
+    }
+
+    .detail-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        padding: 15px 20px;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .btn {
+        padding: 8px 20px;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+    }
+
+    .btn-primary {
+        background: #165DFF;
+        color: #fff;
+    }
+
+    .btn-default {
+        background: #f5f5f5;
+        color: #666;
+    }
+
+    .btn-danger {
+        background: #F56C6C;
+        color: #fff;
+    }
+</style>
+
+<div class="admin-page">
+    <div class="page-header">
+        <div class="stats-row">
+            <h2>数据仓库</h2>
+            <div style="width: 1px; background: #EBEEF5; margin: 0 20px;"></div>
+            <div class="stat-item">
+                <div class="stat-value" style="color: #165DFF;">{{ stats.get('total', 0) }}</div>
+                <div class="stat-label">总数据量</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" style="color: #52C41A;">{{ stats.get('deep_collected', 0) }}</div>
+                <div class="stat-label">深度采集</div>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-default" onclick="showSearch()">
+                <i class="fas fa-search"></i> 搜索
+            </button>
+            <button class="btn btn-primary" onclick="batchDeepCollect()">
+                <i class="fas fa-download"></i> 批量采集
+            </button>
+        </div>
+    </div>
+
+    <div class="search-bar" id="searchBar" {% if not keyword and not source %}style="display: none;"{% end %}>
+        <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+            <div>
+                <label style="font-size: 13px; color: #666; margin-right: 8px;">关键词:</label>
+                <input type="text" id="keyword" value="{{ keyword }}" placeholder="标题/摘要/关键词" 
+                       style="padding: 6px 12px; border-radius: 4px; border: 1px solid #e6e6e6; width: 200px;">
+            </div>
+            <div>
+                <label style="font-size: 13px; color: #666; margin-right: 8px;">来源:</label>
+                <input type="text" id="source" value="{{ source }}" placeholder="来源名称" 
+                       style="padding: 6px 12px; border-radius: 4px; border: 1px solid #e6e6e6; width: 150px;">
+            </div>
+            <button class="btn btn-primary" onclick="doSearch()">搜索</button>
+            {% if keyword or source %}
+            <button class="btn btn-default" onclick="clearSearch()">清除</button>
+            {% end %}
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="layui-table">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="selectAll" onclick="toggleSelectAll()"></th>
+                    <th>ID</th>
+                    <th>标题</th>
+                    <th>摘要</th>
+                    <th>来源</th>
+                    <th>关键词</th>
+                    <th>深度采集</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in records %}
+                <tr>
+                    <td><input type="checkbox" class="record-checkbox" value="{{ record['id'] }}"></td>
+                    <td>{{ record["id"] }}</td>
+                    <td style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ record['title'] }}">
+                        {{ record["title"] }}
+                    </td>
+                    <td style="max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ record['summary'] }}">
+                        {{ record["summary"] if record["summary"] else "-" }}
+                    </td>
+                    <td>
+                        <span style="display: inline-block; padding: 4px 10px; background: #E8F0FF; color: #165DFF; border-radius: 4px; font-size: 12px;">{{ record["source"] if record["source"] else "-" }}</span>
+                    </td>
+                    <td>{{ record["keyword"] if record["keyword"] else "-" }}</td>
+                    <td>
+                        {% if record["is_deep_collected"] == 1 %}
+                        <span style="display: inline-block; padding: 4px 10px; background: #E8F8E6; color: #52C41A; border-radius: 4px; font-size: 12px;">已采集</span>
+                        {% else %}
+                        <span style="display: inline-block; padding: 4px 10px; background: #F5F5F5; color: #999; border-radius: 4px; font-size: 12px;">未采集</span>
+                        {% end %}
+                    </td>
+                    <td>{{ record["created_at"] }}</td>
+                    <td>
+                        <button class="btn btn-default" style="padding: 4px 10px; font-size: 12px;" onclick="viewRecord({{ record['id'] }})">
+                            <i class="fas fa-eye"></i> 查看
+                        </button>
+                        {% if record["is_deep_collected"] == 1 %}
+                        <button class="btn btn-primary" style="padding: 4px 10px; font-size: 12px;" onclick="viewDeepCollectDetail({{ record['id'] }})">
+                            <i class="fas fa-file-alt"></i> 采集详情
+                        </button>
+                        <button class="btn btn-default" style="padding: 4px 10px; font-size: 12px;" onclick="deepCollect({{ record['id'] }})">
+                            <i class="fas fa-refresh"></i> 更新采集
+                        </button>
+                        {% else %}
+                        <button class="btn btn-primary" style="padding: 4px 10px; font-size: 12px;" onclick="deepCollect({{ record['id'] }})">
+                            <i class="fas fa-download"></i> 深度采集
+                        </button>
+                        {% end %}
+                        <button class="btn btn-danger" style="padding: 4px 10px; font-size: 12px;" onclick="deleteRecord({{ record['id'] }})">
+                            <i class="fas fa-trash"></i> 删除
+                        </button>
+                    </td>
+                </tr>
+                {% end %}
+                {% if not records %}
+                <tr>
+                    <td colspan="9" style="text-align: center; color: #999;">暂无数据</td>
+                </tr>
+                {% end %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if total > 0 %}
+    <div class="pagination-container">
+        <div class="layui-laypage">
+            {% set pages = (total + 19) // 20 %}
+            {% if page > 1 %}
+            <a href="/admin/data?page={{ page-1 }}&keyword={{ keyword }}&source={{ source }}">上一页</a>
+            {% end %}
+            {% for p in range(1, pages+1) %}
+            {% if p == page %}
+            <span class="layui-laypage-curr"><em>{{ p }}</em></span>
+            {% else %}
+            <a href="/admin/data?page={{ p }}&keyword={{ keyword }}&source={{ source }}">{{ p }}</a>
+            {% end %}
+            {% end %}
+            {% if page < pages %}
+            <a href="/admin/data?page={{ page+1 }}&keyword={{ keyword }}&source={{ source }}">下一页</a>
+            {% end %}
+            <span>共 {{ total }} 条</span>
+        </div>
+    </div>
+    {% end %}
+</div>
+
+<div class="float-panel" id="deepCollectPanel" style="display: none;">
+    <div class="float-panel-header">
+        <h4><i class="fas fa-spinner"></i> 深度采集任务</h4>
+        <button style="background: none; border: none; color: #fff; font-size: 18px; cursor: pointer;" onclick="toggleDeepCollectPanel()">×</button>
+    </div>
+    <div class="float-panel-body" id="deepCollectBody">
+        <div style="text-align: center; padding: 40px; color: #86909C;">
+            <i class="fas fa-spinner" style="font-size: 48px; margin-bottom: 12px; opacity: 0.5;"></i>
+            <div>暂无进行中的任务</div>
+        </div>
+    </div>
+</div>
+
+<div class="detail-modal" id="recordModal">
+    <div class="detail-modal-content">
+        <div class="detail-modal-header">
+            <h3 id="modalTitle">查看数据详情</h3>
+            <button style="background: none; border: none; font-size: 20px; cursor: pointer;" onclick="closeModal()">×</button>
+        </div>
+        <div class="detail-modal-body" id="recordDetail">
+        </div>
+        <div class="detail-modal-footer">
+            <button class="btn btn-default" onclick="closeModal()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<div class="detail-modal" id="deepCollectDetailModal">
+    <div class="detail-modal-content">
+        <div class="detail-modal-header">
+            <h3>深度采集详情</h3>
+            <button style="background: none; border: none; font-size: 20px; cursor: pointer;" onclick="closeDeepCollectDetailModal()">×</button>
+        </div>
+        <div class="detail-modal-body" id="deepCollectDetailBody">
+        </div>
+        <div class="detail-modal-footer">
+            <button class="btn btn-default" onclick="closeDeepCollectDetailModal()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<script>
+var currentTaskId = null;
+var taskPolling = null;
+
+function getXsrfToken() {
+    var token = '';
+    var inputs = document.querySelectorAll('input[name="_xsrf"]');
+    if (inputs.length > 0) {
+        token = inputs[0].value;
+    }
+    return token;
+}
+
+function showSearch() {
+    document.getElementById('searchBar').style.display = document.getElementById('searchBar').style.display === 'none' ? 'block' : 'none';
+}
+
+function doSearch() {
+    var keyword = document.getElementById('keyword').value;
+    var source = document.getElementById('source').value;
+    var url = '/admin/data?keyword=' + encodeURIComponent(keyword);
+    if (source) {
+        url += '&source=' + encodeURIComponent(source);
+    }
+    window.location.href = url;
+}
+
+function clearSearch() {
+    window.location.href = '/admin/data';
+}
+
+function toggleSelectAll() {
+    var checkboxes = document.querySelectorAll('.record-checkbox');
+    var selectAll = document.getElementById('selectAll');
+    checkboxes.forEach(function(cb) {
+        cb.checked = selectAll.checked;
+    });
+}
+
+function getSelectedRecords() {
+    var checkboxes = document.querySelectorAll('.record-checkbox:checked');
+    return Array.from(checkboxes).map(function(cb) {
+        return parseInt(cb.value);
+    });
+}
+
+function viewRecord(id) {
+    fetch('/admin/data', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-XSRFToken': getXsrfToken()
+        },
+        body: 'action=view&id=' + id + '&_xsrf=' + getXsrfToken()
+    }).then(r => r.json()).then(data => {
+        if (data) {
+            var html = '<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px;">';
+            html += '<div><strong>标题:</strong></div><div>' + (data.title || '-') + '</div>';
+            html += '<div><strong>摘要:</strong></div><div><p style="white-space: pre-wrap;">' + (data.summary || '-') + '</p></div>';
+            html += '<div><strong>来源:</strong></div><div><span style="background: #E8F0FF; color: #165DFF; padding: 4px 10px; border-radius: 4px;">' + (data.source || '-') + '</span></div>';
+            html += '<div><strong>关键词:</strong></div><div>' + (data.keyword || '-') + '</div>';
+            html += '<div><strong>深度采集:</strong></div><div>' + (data.is_deep_collected == 1 ? '<span style="color: #52C41A;">是</span>' : '<span style="color: #999;">否</span>') + '</div>';
+            html += '<div><strong>采集时间:</strong></div><div>' + (data.created_at || '-') + '</div>';
+            html += '<div><strong>链接:</strong></div><div><a href="' + (data.url || '#') + '" target="_blank" style="color: #165DFF;">点击访问</a></div>';
+            if (data.content) {
+                html += '<div><strong>深度采集内容:</strong></div><div><div style="background: #f9f9f9; padding: 12px; border-radius: 6px; max-height: 300px; overflow-y: auto; white-space: pre-wrap;">' + data.content + '</div></div>';
+            }
+            html += '</div>';
+            document.getElementById('recordDetail').innerHTML = html;
+            document.getElementById('recordModal').classList.add('show');
+        }
+    });
+}
+
+function deepCollect(id) {
+    if (confirm('确定要进行深度采集吗？')) {
+        document.getElementById('deepCollectPanel').style.display = 'block';
+        document.getElementById('deepCollectBody').innerHTML = `
+            <div style="padding: 20px; text-align: center;">
+                <div class="task-status-badge running">执行中</div>
+                <div style="margin-top: 16px;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 10%"></div>
+                    </div>
+                    <div style="text-align: center; margin-top: 8px; font-size: 13px;">初始化...</div>
+                </div>
+            </div>
+        `;
+
+        fetch('/admin/data', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-XSRFToken': getXsrfToken()
+            },
+            body: 'action=deep_collect&id=' + id + '&_xsrf=' + getXsrfToken()
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                currentTaskId = data.task_id;
+                pollTaskStatus(data.task_id);
+            } else {
+                alert(data.message);
+                document.getElementById('deepCollectBody').innerHTML = `
+                    <div style="padding: 20px; text-align: center; color: #F56C6C;">
+                        <i class="fas fa-times-circle" style="font-size: 48px; margin-bottom: 12px;"></i>
+                        <div>${data.message}</div>
+                    </div>
+                `;
+            }
+        }).catch(e => {
+            alert('请求失败: ' + e.message);
+        });
+    }
+}
+
+function batchDeepCollect() {
+    var selected = getSelectedRecords();
+    if (selected.length === 0) {
+        alert('请先选择要采集的数据');
+        return;
+    }
+
+    if (confirm('确定要对选中的 ' + selected.length + ' 条数据进行深度采集吗？')) {
+        document.getElementById('deepCollectPanel').style.display = 'block';
+        document.getElementById('deepCollectBody').innerHTML = `
+            <div style="padding: 20px; text-align: center;">
+                <div class="task-status-badge running">批量执行中</div>
+                <div style="margin-top: 16px;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div style="text-align: center; margin-top: 8px; font-size: 13px;">开始批量采集...</div>
+                </div>
+            </div>
+        `;
+
+        fetch('/admin/data', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-XSRFToken': getXsrfToken()
+            },
+            body: 'action=batch_deep_collect&ids=' + encodeURIComponent(JSON.stringify(selected)) + '&_xsrf=' + getXsrfToken()
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                alert(data.message);
+                document.getElementById('deepCollectBody').innerHTML = `
+                    <div style="padding: 20px; text-align: center;">
+                        <div class="task-status-badge completed">批量采集完成</div>
+                        <div style="margin-top: 16px; font-size: 14px;">${data.message}</div>
+                    </div>
+                `;
+                setTimeout(function() {
+                    window.location.href = '/admin/data';
+                }, 2000);
+            } else {
+                alert(data.message);
+            }
+        }).catch(e => {
+            alert('请求失败: ' + e.message);
+        });
+    }
+}
+
+function viewDeepCollectDetail(record_id) {
+    fetch('/admin/data', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-XSRFToken': getXsrfToken()
+        },
+        body: 'action=deep_collect_detail&id=' + record_id + '&_xsrf=' + getXsrfToken()
+    }).then(r => r.json()).then(data => {
+        if (data) {
+            var record = data.record || {};
+            var task = data.task || {};
+            
+            var html = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">';
+            html += '<div><strong>记录标题:</strong></div><div>' + (record.title || '-') + '</div>';
+            html += '<div><strong>记录ID:</strong></div><div>' + (record.id || '-') + '</div>';
+            html += '<div><strong>来源:</strong></div><div>' + (record.source || '-') + '</div>';
+            html += '<div><strong>关键词:</strong></div><div>' + (record.keyword || '-') + '</div>';
+            html += '</div>';
+
+            if (task) {
+                var statusText = ['等待中', '执行中', '已完成', '失败'][task.status || 0] || '未知';
+                var statusClass = ['pending', 'running', 'completed', 'failed'][task.status || 0] || 'pending';
+                
+                html += '<div style="margin-top: 20px; border-top: 1px solid #f0f0f0; padding-top: 20px;">';
+                html += '<h4 style="margin-bottom: 16px;">采集任务详情</h4>';
+                
+                html += '<div style="display: grid; grid-template-columns: 1fr 3fr; gap: 12px; margin-bottom: 16px;">';
+                html += '<div><strong>任务状态:</strong></div><div><span class="task-status-badge ' + statusClass + '">' + statusText + '</span></div>';
+                html += '<div><strong>任务进度:</strong></div><div>' + (task.progress || 0) + '%</div>';
+                html += '<div><strong>当前步骤:</strong></div><div>' + (task.step || '-') + '</div>';
+                html += '<div><strong>数字员工:</strong></div><div>' + (task.employee_name || '默认采集') + '</div>';
+                html += '<div><strong>创建时间:</strong></div><div>' + (task.created_at || '-') + '</div>';
+                html += '<div><strong>更新时间:</strong></div><div>' + (task.updated_at || '-') + '</div>';
+                html += '</div>';
+
+                if (task.log) {
+                    html += '<div style="margin-bottom: 16px;">';
+                    html += '<strong>执行日志:</strong>';
+                    html += '<div class="log-container">' + task.log + '</div>';
+                    html += '</div>';
+                }
+
+                if (task.result) {
+                    html += '<div>';
+                    html += '<strong>采集结果:</strong>';
+                    html += '<div class="result-container">' + task.result + '</div>';
+                    html += '</div>';
+                }
+                
+                html += '</div>';
+            }
+
+            if (record.content) {
+                html += '<div style="margin-top: 20px; border-top: 1px solid #f0f0f0; padding-top: 20px;">';
+                html += '<h4 style="margin-bottom: 16px;">采集内容</h4>';
+                html += '<div style="background: #f9f9f9; padding: 16px; border-radius: 6px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; line-height: 1.6;">' + record.content + '</div>';
+                html += '</div>';
+            }
+
+            document.getElementById('deepCollectDetailBody').innerHTML = html;
+            document.getElementById('deepCollectDetailModal').classList.add('show');
+        }
+    });
+}
+
+function deleteRecord(id) {
+    if (confirm('确定要删除该数据吗？')) {
+        fetch('/admin/data', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-XSRFToken': getXsrfToken()
+            },
+            body: 'action=delete&id=' + id + '&_xsrf=' + getXsrfToken()
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                window.location.href = '/admin/data';
+            } else {
+                alert(data.message);
+            }
+        });
+    }
+}
+
+function closeModal() {
+    document.getElementById('recordModal').classList.remove('show');
+}
+
+function closeDeepCollectDetailModal() {
+    document.getElementById('deepCollectDetailModal').classList.remove('show');
+}
+
+function toggleDeepCollectPanel() {
+    var panel = document.getElementById('deepCollectPanel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    if (panel.style.display === 'none' && taskPolling) {
+        clearInterval(taskPolling);
+        taskPolling = null;
+    }
+}
+
+function pollTaskStatus(task_id) {
+    if (taskPolling) {
+        clearInterval(taskPolling);
+    }
+    
+    taskPolling = setInterval(function() {
+        fetch('/admin/data', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-XSRFToken': getXsrfToken()
+            },
+            body: 'action=deep_collect_tasks&record_id=0&status=-1&_xsrf=' + getXsrfToken()
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success' && data.data.length > 0) {
+                var task = data.data.find(function(t) { return t.id === task_id; });
+                if (task) {
+                    renderTaskPanel(task);
+                    
+                    if (task.status === 2 || task.status === 3) {
+                        clearInterval(taskPolling);
+                        taskPolling = null;
+                        setTimeout(function() {
+                            window.location.href = '/admin/data';
+                        }, 2000);
+                    }
+                }
+            }
+        }).catch(e => {
+            console.error('轮询失败:', e);
+        });
+    }, 1500);
+}
+
+function renderTaskPanel(task) {
+    var statusText = ['等待中', '执行中', '已完成', '失败'][task.status || 0] || '未知';
+    var statusClass = ['pending', 'running', 'completed', 'failed'][task.status || 0] || 'pending';
+    
+    var html = `
+        <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <span class="task-status-badge ${statusClass}">${statusText}</span>
+                <span style="font-size: 12px; color: #86909C;">${task.progress}%</span>
+            </div>
+            
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: ${task.progress}%"></div>
+            </div>
+            
+            <div style="margin-top: 16px;">
+                <div style="font-size: 13px; font-weight: 500; margin-bottom: 8px;">当前步骤</div>
+                <div style="color: #165DFF;">${task.step || '-'}</div>
+            </div>
+            
+            <div style="margin-top: 16px;">
+                <div style="font-size: 13px; font-weight: 500; margin-bottom: 8px;">数字员工</div>
+                <div>${task.employee_name || '默认采集'}</div>
+            </div>
+            
+            ${task.log ? `
+            <div style="margin-top: 16px;">
+                <div style="font-size: 13px; font-weight: 500; margin-bottom: 8px;">执行日志</div>
+                <div class="log-container">${task.log}</div>
+            </div>
+            ` : ''}
+            
+            ${task.result ? `
+            <div style="margin-top: 16px;">
+                <div style="font-size: 13px; font-weight: 500; margin-bottom: 8px;">采集结果</div>
+                <div class="result-container">${task.result}</div>
+            </div>
+            ` : ''}
+        </div>
+    `;
+    
+    document.getElementById('deepCollectBody').innerHTML = html;
+}
+</script>
+{% end %}

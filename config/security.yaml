@@ -1,0 +1,23 @@
+password:
+  hash_algorithm: "sha256"
+  salt_length: 16
+  iterations: 100000
+
+session:
+  max_age_days: 7
+  secure: false
+  httponly: true
+
+rate_limit:
+  login_max_attempts: 5
+  login_lockout_minutes: 15
+  websocket_max_messages_per_minute: 60
+
+cors:
+  allowed_origins: []
+
+headers:
+  x_frame_options: "SAMEORIGIN"
+  x_xss_protection: "1; mode=block"
+  x_content_type_options: "nosniff"
+  strict_transport_security: "max-age=31536000"

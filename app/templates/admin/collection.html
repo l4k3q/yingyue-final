@@ -1,0 +1,219 @@
+{% extends "../admin/base.html" %}
+{% block body %}
+<div class="admin-page">
+    <div class="page-header">
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <h2>采集管理</h2>
+            <div style="display: flex; gap: 16px;">
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: 700; color: #165DFF;">{{ stats.get('total', 0) }}</div>
+                    <div style="font-size: 12px; color: #86909C;">总采集次数</div>
+                </div>
+                <div style="width: 1px; background: #EBEEF5;"></div>
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: 700; color: #52C41A;">{{ stats.get('success', 0) }}</div>
+                    <div style="font-size: 12px; color: #86909C;">成功</div>
+                </div>
+                <div style="width: 1px; background: #EBEEF5;"></div>
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: 700; color: #FF4D4F;">{{ stats.get('failed', 0) }}</div>
+                    <div style="font-size: 12px; color: #86909C;">失败</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="search-bar" id="searchBar">
+        <div class="layui-form-item">
+            <div class="layui-inline">
+                <label class="layui-form-label">关键词</label>
+                <div class="layui-input-inline">
+                    <input type="text" name="keyword" id="keyword" value="{{ keyword }}" placeholder="搜索关键词" class="layui-input">
+                </div>
+            </div>
+            <div class="layui-inline">
+                <label class="layui-form-label">来源</label>
+                <div class="layui-input-inline">
+                    <input type="text" name="source" id="source" value="{{ source }}" placeholder="来源名称" class="layui-input">
+                </div>
+            </div>
+            <button class="layui-btn" onclick="doSearch()">搜索</button>
+            {% if keyword or source %}
+            <button class="layui-btn layui-btn-primary" onclick="clearSearch()">清除</button>
+            {% end %}
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="layui-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>来源</th>
+                    <th>关键词</th>
+                    <th>页数</th>
+                    <th>采集文章数</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in records %}
+                <tr>
+                    <td>{{ record["id"] }}</td>
+                    <td>
+                        <span class="layui-badge layui-bg-blue">{{ record["source_name"] if record["source_name"] else "-" }}</span>
+                    </td>
+                    <td>{{ record["keyword"] if record["keyword"] else "-" }}</td>
+                    <td>{{ record["page"] }}</td>
+                    <td>
+                        <span class="layui-badge layui-bg-green">{{ record.get('article_count', 0) }}</span>
+                    </td>
+                    <td>
+                        {% if record["status"] == 1 %}
+                        <span class="layui-badge layui-bg-green">成功</span>
+                        {% else %}
+                        <span class="layui-badge layui-bg-red">失败</span>
+                        {% end %}
+                    </td>
+                    <td>{{ record["created_at"] }}</td>
+                    <td>
+                        <button class="layui-btn layui-btn-xs" onclick="viewRecord({{ record['id'] }})">
+                            <i class="layui-icon layui-icon-search"></i> 查看
+                        </button>
+                        <button class="layui-btn layui-btn-xs layui-btn-danger" onclick="deleteRecord({{ record['id'] }})">
+                            <i class="layui-icon layui-icon-delete"></i> 删除
+                        </button>
+                    </td>
+                </tr>
+                {% end %}
+                {% if not records %}
+                <tr>
+                    <td colspan="8" class="text-center">暂无采集记录</td>
+                </tr>
+                {% end %}
+            </tbody>
+        </table>
+
+        {% if total > 20 %}
+        <div class="pagination-container">
+            <div class="layui-box layui-laypage layui-laypage-default" id="pagination"></div>
+        </div>
+        {% end %}
+    </div>
+
+    <div class="layui-modal" id="detailModal">
+        <div class="layui-modal-content">
+            <div class="layui-modal-header">
+                <h3>采集详情</h3>
+                <button class="layui-close" onclick="closeDetailModal()"></button>
+            </div>
+            <div class="layui-modal-body" id="detailContent">
+            </div>
+            <div class="layui-modal-footer">
+                <button class="layui-btn layui-btn-primary" onclick="closeDetailModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function doSearch() {
+    var keyword = document.getElementById('keyword').value;
+    var source = document.getElementById('source').value;
+    var url = '/admin/collection?';
+    if (keyword) url += 'keyword=' + encodeURIComponent(keyword) + '&';
+    if (source) url += 'source=' + encodeURIComponent(source) + '&';
+    window.location.href = url;
+}
+
+function clearSearch() {
+    window.location.href = '/admin/collection';
+}
+
+function viewRecord(id) {
+    fetch('/admin/watch/record/' + id, {
+        method: 'GET'
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (data.status === 'success') {
+            var record = data.data;
+            var articles = record.articles || [];
+            var html = '<div style="padding: 20px;">';
+            html += '<div style="margin-bottom: 20px;">';
+            html += '<p><strong>来源:</strong> ' + (record.source_name || '-') + '</p>';
+            html += '<p><strong>关键词:</strong> ' + (record.keyword || '-') + '</p>';
+            html += '<p><strong>页数:</strong> ' + (record.page || '-') + '</p>';
+            html += '<p><strong>状态:</strong> ' + (record.status === 1 ? '<span style="color: green;">成功</span>' : '<span style="color: red;">失败</span>') + '</p>';
+            html += '</div>';
+            html += '<h4>采集文章列表:</h4>';
+            if (articles.length > 0) {
+                html += '<ul style="list-style: none; padding: 0;">';
+                articles.forEach(function(article) {
+                    html += '<li style="padding: 10px; border-bottom: 1px solid #eee;">';
+                    html += '<a href="' + (article.url || '#') + '" target="_blank" style="color: #165DFF;">' + (article.title || '-') + '</a>';
+                    html += '</li>';
+                });
+                html += '</ul>';
+            } else {
+                html += '<p>无文章数据</p>';
+            }
+            html += '</div>';
+            document.getElementById('detailContent').innerHTML = html;
+            document.getElementById('detailModal').style.display = 'block';
+        } else {
+            alert('获取详情失败');
+        }
+    }).catch(function() {
+        alert('获取详情失败');
+    });
+}
+
+function closeDetailModal() {
+    document.getElementById('detailModal').style.display = 'none';
+}
+
+function deleteRecord(id) {
+    if (!confirm('确定要删除这条采集记录吗？')) {
+        return;
+    }
+    fetch('/admin/watch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'action=delete_record&id=' + id
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (data.status === 'success') {
+            window.location.reload();
+        } else {
+            alert(data.message);
+        }
+    }).catch(function() {
+        alert('删除失败');
+    });
+}
+
+{% if total > 20 %}
+layui.use(['laypage'], function() {
+    var laypage = layui.laypage;
+    laypage.render({
+        elem: 'pagination',
+        count: {{ total }},
+        limit: 20,
+        curr: {{ page }},
+        jump: function(obj) {
+            var keyword = document.getElementById('keyword').value;
+            var source = document.getElementById('source').value;
+            var url = '/admin/collection?page=' + obj.curr;
+            if (keyword) url += '&keyword=' + encodeURIComponent(keyword);
+            if (source) url += '&source=' + encodeURIComponent(source);
+            window.location.href = url;
+        }
+    });
+});
+{% end %}
+</script>
+{% end %}

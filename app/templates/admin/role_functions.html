@@ -1,0 +1,85 @@
+{% extends "../admin/base.html" %}
+{% block body %}
+<div class="admin-page">
+    <div class="page-header">
+        <h2>角色权限配置 - {{ role['name'] if role else '' }}</h2>
+        <div class="header-actions">
+            <button class="layui-btn" onclick="selectAll()">
+                <i class="layui-icon layui-icon-check"></i> 全选
+            </button>
+            <button class="layui-btn layui-btn-primary" onclick="clearAll()">
+                <i class="layui-icon layui-icon-close"></i> 取消全选
+            </button>
+        </div>
+    </div>
+
+    <div class="tree-container">
+        <form id="permissionsForm" action="/admin/roles/functions" method="post">
+            <input type="hidden" name="role_id" value="{{ role['id'] if role else 0 }}">
+            <input type="hidden" name="function_ids" id="functionIds">
+            
+            <div id="functionTree" class="layui-tree"></div>
+        </form>
+    </div>
+
+    <div class="layui-modal-footer" style="margin-top: 20px;">
+        <button class="layui-btn layui-btn-primary" onclick="window.location.href='/admin/roles'">返回</button>
+        <button class="layui-btn" onclick="submitPermissions()">保存配置</button>
+    </div>
+</div>
+
+<script src="{{ static_url('dist/layui/layui.js') }}"></script>
+<script>
+layui.use(['tree'], function() {
+    var tree = layui.tree;
+    
+    var selectedIds = {{ selected_ids }};
+    
+    var treeData = {{ function_tree }};
+    
+    tree.render({
+        elem: '#functionTree',
+        data: treeData,
+        showCheckbox: true,
+        id: 'functionTree',
+        isJump: false,
+        oncheck: function(obj) {
+            var checkedIds = [];
+            var checkedNodes = tree.getChecked('functionTree');
+            checkedNodes.forEach(function(node) {
+                checkedIds.push(node.id);
+            });
+            document.getElementById('functionIds').value = checkedIds.join(',');
+        },
+        onready: function() {
+            if (selectedIds.length > 0) {
+                tree.checkNode('functionTree', selectedIds);
+                document.getElementById('functionIds').value = selectedIds.join(',');
+            }
+        }
+    });
+});
+
+function selectAll() {
+    layui.use(['tree'], function() {
+        var tree = layui.tree;
+        tree.checkNode('functionTree', {checked: true});
+        var checkedNodes = tree.getChecked('functionTree');
+        var checkedIds = checkedNodes.map(function(node) { return node.id; });
+        document.getElementById('functionIds').value = checkedIds.join(',');
+    });
+}
+
+function clearAll() {
+    layui.use(['tree'], function() {
+        var tree = layui.tree;
+        tree.checkNode('functionTree', {checked: false});
+        document.getElementById('functionIds').value = '';
+    });
+}
+
+function submitPermissions() {
+    document.getElementById('permissionsForm').submit();
+}
+</script>
+{% end %}
