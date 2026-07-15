@@ -859,7 +859,41 @@
         const atBtn = document.getElementById('atBtn');
         
         const digitalEmployees = [];
-        
+        let selectedModelId = null;
+        let streamingMessageDiv = null;
+        let streamingContentDiv = null;
+
+        function loadModels() {
+            fetch('/api/models')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById('modelSelect');
+                    select.innerHTML = '';
+                    if (data.models && data.models.length > 0) {
+                        data.models.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model.id;
+                            option.textContent = model.name;
+                            if (model.is_default) {
+                                option.selected = true;
+                                selectedModelId = model.id;
+                            }
+                            select.appendChild(option);
+                        });
+                    } else {
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = '默认模型';
+                        select.appendChild(option);
+                    }
+                })
+                .catch(error => console.error('加载模型列表失败:', error));
+        }
+
+        document.getElementById('modelSelect').addEventListener('change', function() {
+            selectedModelId = this.value ? parseInt(this.value) : null;
+        });
+
         function initWebSocket() {
             ws = new WebSocket(wsUrl);
             
@@ -1294,9 +1328,12 @@
             chatInput.value = '';
             sendBtn.disabled = true;
             
-            ws.send(JSON.stringify({ type: 'message', data: content }));
+            ws.send(JSON.stringify({
+                type: 'message',
+                data: { content: content, model_id: selectedModelId }
+            }));
         }
-        
+
         function newConversation() {
             ws.send(JSON.stringify({ type: 'new_conversation' }));
         }
@@ -1424,6 +1461,7 @@
             }
         });
         
+        loadModels();
         initWebSocket();
         loadConversations();
     </script>

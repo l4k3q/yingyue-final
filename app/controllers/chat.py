@@ -52,6 +52,23 @@ class DigitalEmployeeAPIHandler(BaseHandler):
         }))
 
 
+class ModelListAPIHandler(BaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        models, total = AIModelRepository.get_models(page=1, page_size=100)
+        safe_models = []
+        for m in models:
+            if m.get("status") == 1:
+                safe_models.append({
+                    "id": m["id"],
+                    "name": m["name"],
+                    "description": m.get("description", ""),
+                    "provider": m.get("provider", "openai"),
+                    "is_default": m.get("is_default", 0),
+                })
+        self.write(json.dumps({"success": True, "models": safe_models}))
+
+
 class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
     def open(self):
         self.username = self.get_current_user()
@@ -69,7 +86,13 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             msg_data = data.get("data")
             
             if msg_type == "message":
-                self.handle_message(msg_data)
+                if isinstance(msg_data, dict):
+                    content = msg_data.get("content", "")
+                    model_id = msg_data.get("model_id")
+                else:
+                    content = msg_data
+                    model_id = None
+                self.handle_message(content, model_id=model_id)
             elif msg_type == "new_conversation":
                 self.handle_new_conversation()
             elif msg_type == "load_conversation":
