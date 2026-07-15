@@ -169,14 +169,21 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
         self.write_message({"type": "typing", "data": f"正在调用 @{employee_name}..."})
         
         try:
-            # 对于天气员工，取第一个词作为城市名（更准确地匹配用户意图）
-            city = ""
-            if args:
+            # 智能提取城市名（天气员工需要纯城市名调用 wttr.in API）
+            if employee.get("code_name") == "weather" and args:
+                text = args.strip()
+                # 去除天气查询中常见的描述词，保留城市名
+                for word in ["近五天", "近三天", "今天", "明天", "天气预报", "天气", "气温", "温度", "的", "表格", "情况", "怎么样", "如何"]:
+                    text = text.replace(word, "")
+                # 取剩余文本的前2-3个汉字作为城市名
+                import re as re_mod
+                city_match = re_mod.match(r'[一-鿿]{2,3}', text.strip())
+                city = city_match.group(0) if city_match else text.strip().split()[0] if text.strip().split() else text.strip()[:2]
+            elif args:
                 parts = args.split()
-                if employee.get("code_name") == "weather":
-                    city = parts[0] if parts else args.strip()
-                else:
-                    city = parts[-1] if parts else args.strip()
+                city = parts[-1] if parts else args.strip()
+            else:
+                city = ""
             result = DigitalEmployeeService.execute(employee, {"query": args, "city": city})
             
             if result.get("success", False):
