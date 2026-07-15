@@ -207,6 +207,25 @@
         .delete-task-btn:hover {
             color: #dc2626;
         }
+        .export-task-btn {
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: none;
+            color: #9ca3af;
+            cursor: pointer;
+            opacity: 0;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .task-item:hover .export-task-btn {
+            opacity: 1;
+        }
+        .export-task-btn:hover {
+            color: #ef4444;
+        }
         .main-content {
             flex: 1;
             display: flex;
@@ -716,6 +735,7 @@
             ws.onopen = function() {
                 console.log('WebSocket 连接成功');
                 loadConversations();
+                loadModels();
             };
             
             ws.onmessage = function(event) {
@@ -786,7 +806,10 @@
                                 <div class="task-name">${conv.title}</div>
                                 <div class="task-time">${conv.created_at}</div>
                             </div>
-                            <button class="delete-task-btn" onclick="deleteConversation(${conv.id})">
+                            <button class="export-task-btn" onclick="event.stopPropagation(); exportConversation(${conv.id})" title="导出PDF">
+                                <i class="fas fa-file-pdf"></i>
+                            </button>
+                            <button class="delete-task-btn" onclick="event.stopPropagation(); deleteConversation(${conv.id})" title="删除对话">
                                 <i class="fas fa-trash"></i>
                             </button>
                         `;
@@ -796,7 +819,28 @@
                 })
                 .catch(error => console.error('加载对话列表失败:', error));
         }
-        
+
+        function loadModels() {
+            fetch('/api/models')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.models.length > 0) {
+                        const select = document.getElementById('modelSelect');
+                        select.innerHTML = '';
+                        data.models.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model.id;
+                            option.textContent = model.name + (model.is_default ? ' (默认)' : '');
+                            if (model.is_default) {
+                                option.selected = true;
+                            }
+                            select.appendChild(option);
+                        });
+                    }
+                })
+                .catch(error => console.error('加载模型列表失败:', error));
+        }
+
         function loadConversation(conversationId) {
             currentConversationId = conversationId;
             ws.send(JSON.stringify({ type: 'load_conversation', conversation_id: conversationId }));
@@ -808,6 +852,10 @@
             if (confirm('确定要删除这个对话吗？')) {
                 ws.send(JSON.stringify({ type: 'delete_conversation', conversation_id: conversationId }));
             }
+        }
+
+        function exportConversation(conversationId) {
+            window.open('/export?conversation_id=' + conversationId, '_blank');
         }
         
         function loadMessages(messages) {
@@ -934,7 +982,8 @@
             chatInput.value = '';
             sendBtn.disabled = true;
             
-            ws.send(JSON.stringify({ type: 'message', data: content }));
+            const modelId = modelSelect.value;
+            ws.send(JSON.stringify({ type: 'message', data: content, model_id: modelId === 'default' ? null : parseInt(modelId) }));
         }
         
         function newConversation() {

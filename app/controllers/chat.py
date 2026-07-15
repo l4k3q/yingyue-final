@@ -52,6 +52,27 @@ class DigitalEmployeeAPIHandler(BaseHandler):
         }))
 
 
+class ModelListAPIHandler(BaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        models, _ = AIModelRepository.get_models(page=1, page_size=100)
+        model_list = []
+        for m in models:
+            if m.get("status") == 1:
+                model_list.append({
+                    "id": m["id"],
+                    "name": m["name"],
+                    "model_id": m["model_id"],
+                    "description": m.get("description", ""),
+                    "provider": m.get("provider", ""),
+                    "is_default": m.get("is_default", 0)
+                })
+        self.write(json.dumps({
+            "success": True,
+            "models": model_list
+        }))
+
+
 class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
     def open(self):
         self.username = self.get_current_user()
@@ -61,13 +82,18 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
         user = UserRepository.get_user_by_username(self.username)
         self.user_id = user["id"] if user else 0
         self.conversation_id = None
+        self.selected_model_id = None
 
     def on_message(self, message):
         try:
             data = json.loads(message)
             msg_type = data.get("type")
             msg_data = data.get("data")
-            
+
+            # Store model selection if provided
+            if data.get("model_id") is not None:
+                self.selected_model_id = data.get("model_id")
+
             if msg_type == "message":
                 self.handle_message(msg_data)
             elif msg_type == "new_conversation":
@@ -291,13 +317,21 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             self.write_message({"type": "error", "data": error_msg})
             self.handle_general_chat(content)
 
+    def _get_model(self):
+        """Get the selected model, or fall back to the default model."""
+        if self.selected_model_id:
+            model = AIModelRepository.get_model_by_id(self.selected_model_id)
+            if model and model.get("status") == 1:
+                return model
+        return AIModelRepository.get_default_model()
+
     def handle_relationship_mining(self, content):
         start_time = time.time()
-        
+
         try:
             self.write_message({"type": "typing", "data": "正在挖掘数据关系..."})
-            
-            model = AIModelRepository.get_default_model()
+
+            model = self._get_model()
             if not model:
                 ai_response = "关系挖掘需要配置大模型服务，请联系管理员。"
                 ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
@@ -368,7 +402,7 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             self.write_message({"type": "error", "data": error_msg})
 
     def generate_ai_response(self, content):
-        model = AIModelRepository.get_default_model()
+        model = self._get_model()
         
         if not model:
             return f"您好！我是智能问数助手。您的问题是：\"{content}\"\n\n由于尚未配置大模型服务，我暂时无法为您提供完整的AI分析。请联系管理员配置模型引擎后，我将能为您提供更强大的智能分析能力！", 0
