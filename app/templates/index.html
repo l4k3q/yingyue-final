@@ -358,6 +358,10 @@
             line-height: 1.6;
             word-wrap: break-word;
         }
+        .message-wide .message-content {
+            max-width: 92%;
+            min-width: 300px;
+        }
         .typing-indicator {
             display: flex;
             gap: 12px;
@@ -1049,7 +1053,7 @@
             }
 
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'message assistant';
+            messageDiv.className = 'message assistant message-wide';
 
             // 构建表头
             let headerCells = '';
@@ -1122,7 +1126,7 @@
             }
 
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'message assistant';
+            messageDiv.className = 'message assistant message-wide';
 
             // AI 洞察列表
             let insightsHtml = '';
