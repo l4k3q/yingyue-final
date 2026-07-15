@@ -7,19 +7,23 @@ class ReportService:
     @staticmethod
     def generate_report(question: str) -> dict:
         db_result = DBQueryService.query(question)
-        
+        return ReportService.generate_report_with_data(question, db_result)
+
+    @staticmethod
+    def generate_report_with_data(question: str, db_result: dict) -> dict:
+        """与 generate_report 相同，但接受预取的查询结果，避免重复查询。"""
         if not db_result.get("success", False):
             return {"success": False, "error": db_result.get("error", "查询失败")}
-        
+
         data = db_result.get("results", [])
         columns = db_result.get("columns", [])
-        
+
         if len(data) == 0:
             return {"success": False, "error": "没有数据可以生成报表"}
-        
+
         chart_type = ReportService._determine_chart_type(data, columns, question)
         option = ReportService._build_chart_option(chart_type, data, columns, question)
-        
+
         return {
             "success": True,
             "chart_type": chart_type,
