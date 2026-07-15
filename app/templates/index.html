@@ -709,6 +709,43 @@
         const atBtn = document.getElementById('atBtn');
         
         const digitalEmployees = [];
+        let selectedModelId = null;
+        let streamingMessageDiv = null;
+        let streamingContentDiv = null;
+
+        function loadModels() {
+            fetch('/api/models')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById('modelSelect');
+                    select.innerHTML = '';
+                    if (data.models && data.models.length > 0) {
+                        data.models.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model.id;
+                            option.textContent = model.name;
+                            if (model.is_default) {
+                                option.selected = true;
+                                selectedModelId = model.id;
+                            }
+                            select.appendChild(option);
+                        });
+                    } else {
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = '默认模型';
+                        select.appendChild(option);
+                    }
+                })
+                .catch(error => console.error('加载模型列表失败:', error));
+        }
+
+        document.getElementById('modelSelect').addEventListener('change', function() {
+            selectedModelId = this.value ? parseInt(this.value) : null;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'set_model', data: { model_id: selectedModelId } }));
+            }
+        });
         
         function initWebSocket() {
             ws = new WebSocket(wsUrl);
@@ -725,6 +762,13 @@
                     case 'typing':
                         showTyping(data.data);
                         break;
+                    case 'stream_start':
+                        removeTyping();
+                        appendStreamingMessage();
+                        break;
+                    case 'stream_chunk':
+                        appendStreamChunk(data.data);
+                        break;
                     case 'stream':
                         appendMessage('assistant', data.data);
                         break;
@@ -736,6 +780,8 @@
                         break;
                     case 'done':
                         removeTyping();
+                        streamingMessageDiv = null;
+                        streamingContentDiv = null;
                         break;
                     case 'error':
                         showError(data.data);
@@ -819,6 +865,36 @@
         
         function clearMessages() {
             chatArea.innerHTML = '';
+        }
+
+        function appendStreamingMessage() {
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+            messageDiv.id = 'streamingMessage';
+
+            messageDiv.innerHTML = `
+                <div class="message-avatar"><i class="fas fa-robot"></i></div>
+                <div class="message-content"></div>
+                <div class="message-metadata"></div>
+            `;
+
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+
+            streamingMessageDiv = messageDiv;
+            streamingContentDiv = messageDiv.querySelector('.message-content');
+        }
+
+        function appendStreamChunk(text) {
+            if (!streamingContentDiv) {
+                appendStreamingMessage();
+            }
+            streamingContentDiv.textContent += text;
+            chatArea.scrollTop = chatArea.scrollHeight;
         }
         
         function appendMessage(role, content) {
@@ -934,7 +1010,10 @@
             chatInput.value = '';
             sendBtn.disabled = true;
             
-            ws.send(JSON.stringify({ type: 'message', data: content }));
+            ws.send(JSON.stringify({
+                type: 'message',
+                data: { content: content, model_id: selectedModelId }
+            }));
         }
         
         function newConversation() {
@@ -1064,8 +1143,8 @@
             }
         });
         
+        loadModels();
         initWebSocket();
-        loadConversations();
     </script>
 </body>
 </html>
