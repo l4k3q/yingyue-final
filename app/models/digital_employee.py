@@ -304,15 +304,33 @@ class DigitalEmployeeService:
                 
                 if employee.get("code_name") == "weather" and isinstance(result, dict):
                     try:
-                        current_condition = result.get("current_condition", [])[0]
-                        location = result.get("nearest_area", [])[0].get("areaName", [])[0].get("value", "")
+                        current_condition = result.get("current_condition", [{}])[0]
+                        nearest = result.get("nearest_area", [{}])[0]
+                        location = nearest.get("areaName", [{}])[0].get("value", "")
+                        if not location:
+                            location = nearest.get("region", [{}])[0].get("value", "")
                         date = current_condition.get("observation_time", "")
                         temp = f"{current_condition.get('temp_C', '')}°C"
-                        condition = current_condition.get("weatherDesc", [])[0].get("value", "")
+                        condition = current_condition.get("weatherDesc", [{}])[0].get("value", "")
                         humidity = f"{current_condition.get('humidity', '')}%"
-                        wind = current_condition.get("windspeedKmph", "") + " km/h"
-                        visibility = current_condition.get("visibility", "") + " km"
-                        
+                        wind = f"{current_condition.get('windspeedKmph', '')} km/h"
+                        visibility = f"{current_condition.get('visibility', '')} km"
+
+                        # 提取多日天气预报数据
+                        forecast = []
+                        weather_list = result.get("weather", [])
+                        for day in weather_list[:7]:  # 最多7天
+                            hourly = day.get("hourly", [{}])[0]
+                            forecast.append({
+                                "date": day.get("date", ""),
+                                "max_temp": f"{day.get('maxtempC', '')}°C",
+                                "min_temp": f"{day.get('mintempC', '')}°C",
+                                "avg_temp": f"{day.get('avgtempC', '')}°C",
+                                "condition": hourly.get("weatherDesc", [{}])[0].get("value", ""),
+                                "wind": f"{hourly.get('windspeedKmph', '')} km/h",
+                                "humidity": f"{hourly.get('humidity', '')}%",
+                            })
+
                         return {
                             "success": True,
                             "content": {
@@ -322,7 +340,8 @@ class DigitalEmployeeService:
                                 "condition": condition,
                                 "humidity": humidity,
                                 "wind": wind,
-                                "visibility": visibility
+                                "visibility": visibility,
+                                "forecast": forecast
                             },
                             "type": "api",
                             "raw": response.text

@@ -212,7 +212,8 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             if result.get("success", False):
                 content = result.get("content", "")
                 card_template = employee.get("card_template", "")
-                
+
+                # 天气预报卡片：先渲染卡片，再发送预报表格
                 if card_template and isinstance(content, dict):
                     try:
                         ai_response = card_template.format(**content)
@@ -222,16 +223,36 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
                     ai_response = json.dumps(content, ensure_ascii=False, indent=2)
                 else:
                     ai_response = str(content)
+
+                # 天气员工有预报数据时发送表格
+                if employee.get("code_name") == "weather" and isinstance(content, dict):
+                    forecast = content.get("forecast", [])
+                    if forecast:
+                        forecast_table = {
+                            "title": f"{content.get('location', '')} 未来{len(forecast)}天天气预报",
+                            "columns": [
+                                {"key": "date", "title": "日期"},
+                                {"key": "max_temp", "title": "最高温", "align": "right"},
+                                {"key": "min_temp", "title": "最低温", "align": "right"},
+                                {"key": "condition", "title": "天气"},
+                                {"key": "wind", "title": "风力", "align": "right"},
+                                {"key": "humidity", "title": "湿度", "align": "right"},
+                            ],
+                            "rows": forecast,
+                            "total_count": len(forecast),
+                            "display_count": len(forecast),
+                            "truncated": False,
+                        }
+                        self.write_message({"type": "table", "data": forecast_table})
             else:
                 ai_response = f"调用 @{employee_name} 失败: {result.get('error', '未知错误')}"
-            
+
             elapsed_time = round(time.time() - start_time, 2)
             token_count = len(ai_response) // 4
-            
+
             if self.conversation_id:
-                ConversationRepository.add_message(self.conversation_id, "user", f"@{employee_name} {args}" if args else f"@{employee_name}")
                 ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
-            
+
             self.write_message({"type": "stream", "data": ai_response})
             self.write_message({"type": "metadata", "data": {"time": elapsed_time, "tokens": token_count}})
             self.write_message({"type": "done"})
