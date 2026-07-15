@@ -121,22 +121,22 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
         ConversationRepository.delete_conversation(conversation_id)
         self.write_message({"type": "conversation_deleted", "data": conversation_id})
 
-    def handle_message(self, content):
+    def handle_message(self, content, model_id=None):
         if not content or not self.user_id:
             return
-        
+
         if not self.conversation_id:
             self.conversation_id = ConversationRepository.create_conversation(self.user_id, content[:30] if len(content) > 30 else content)
-        
+
         ConversationRepository.add_message(self.conversation_id, "user", content)
-        
+
         intent_result = IntentService.recognize_with_llm(content)
         intent = intent_result.get("intent", "general_chat")
         confidence = intent_result.get("confidence", 0.0)
         params = intent_result.get("params", {})
-        
+
         self.write_message({"type": "typing", "data": f"正在分析意图: {IntentService.INTENT_TYPES.get(intent, intent)}..."})
-        
+
         if intent == "digital_employee":
             employee_name = params.get("employee_name", "")
             args = params.get("args", "")
@@ -152,7 +152,7 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
         elif intent == "relationship_mining":
             self.handle_relationship_mining(content)
         else:
-            self.handle_general_chat(content)
+            self.handle_general_chat(content, model_id=model_id)
 
     def handle_employee_message(self, employee_code, args):
         start_time = time.time()
@@ -424,16 +424,16 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             self.write_message({"type": "error", "data": error_msg})
             self.handle_general_chat(content)
 
-    def handle_general_chat(self, content):
+    def handle_general_chat(self, content, model_id=None):
         start_time = time.time()
-        
+
         try:
-            ai_response, token_count = self.generate_ai_response(content)
-            
+            ai_response, token_count = self.generate_ai_response(content, model_id=model_id)
+
             ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
-            
+
             elapsed_time = round(time.time() - start_time, 2)
-            
+
             self.write_message({"type": "stream", "data": ai_response})
             self.write_message({"type": "metadata", "data": {"time": elapsed_time, "tokens": token_count}})
             self.write_message({"type": "done"})
@@ -441,8 +441,13 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             error_msg = f"AI 响应错误: {str(e)}"
             self.write_message({"type": "error", "data": error_msg})
 
-    def generate_ai_response(self, content):
-        model = AIModelRepository.get_default_model()
+    def generate_ai_response(self, content, model_id=None):
+        # 优先使用指定模型，否则使用默认模型
+        model = None
+        if model_id:
+            model = AIModelRepository.get_model_by_id(int(model_id))
+        if not model:
+            model = AIModelRepository.get_default_model()
         
         if not model:
             return f"您好！我是智能问数助手。您的问题是：\"{content}\"\n\n由于尚未配置大模型服务，我暂时无法为您提供完整的AI分析。请联系管理员配置模型引擎后，我将能为您提供更强大的智能分析能力！", 0
