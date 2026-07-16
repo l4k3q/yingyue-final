@@ -207,6 +207,11 @@ class DBQueryService:
             return {"success": False, "error": "SQL语句不安全"}
         
         try:
+            # 只取第一个 SQL 语句，防止多语句执行错误
+            sql = sql.split(";")[0].strip()
+            if not sql:
+                return {"success": False, "error": "SQL语句为空"}
+
             with get_connection() as conn:
                 cursor = conn.execute(sql)
                 columns = [desc[0] for desc in cursor.description] if cursor.description else []
@@ -276,19 +281,130 @@ class DBQueryService:
         return "\n".join(lines)
 
     @staticmethod
+    def to_structured_table(results: dict, title: str = "查询结果", max_display: int = 50) -> dict:
+        """将原始查询结果转换为结构化表格数据，供前端 table 消息类型使用。"""
+        if not results.get("success", False):
+            return None
+
+        data_rows = results.get("results", [])
+        col_names = results.get("columns", [])
+        total = results.get("count", len(data_rows))
+
+        columns = []
+        for col in col_names:
+            col_lower = col.lower()
+            is_numeric = any(kw in col_lower for kw in
+                ("id", "count", "num", "amount", "total", "score", "price", "value", "sum", "avg"))
+            col_def = {
+                "key": col,
+                "title": col,
+                "width": "100px" if is_numeric else "auto",
+                "align": "right" if is_numeric else "left"
+            }
+            columns.append(col_def)
+
+        display_rows = data_rows[:max_display]
+        truncated = total > max_display
+
+        return {
+            "title": title,
+            "columns": columns,
+            "rows": display_rows,
+            "total_count": total,
+            "display_count": len(display_rows),
+            "truncated": truncated,
+            "sql": results.get("sql", "")
+        }
+
+    @staticmethod
+    def to_html_table(results: dict, title: str = "查询结果", max_display: int = 50) -> str:
+        """将查询结果生成为内联样式的 HTML 表格字符串，用于 stream 消息的直接注入。"""
+        if not results.get("success", False):
+            return f"<p style='color:#dc2626'>查询失败: {results.get('error', '未知错误')}</p>"
+
+        data_rows = results.get("results", [])
+        col_names = results.get("columns", [])
+        total = results.get("count", len(data_rows))
+        display_rows = data_rows[:max_display]
+
+        if total == 0:
+            return "<p style='color:#9ca3af'>查询结果为空</p>"
+
+        style = """
+        <style>
+            .inline-table{width:100%;border-collapse:collapse;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+            .inline-table thead th{background:#1f2937;color:#fff;padding:10px 12px;text-align:left;font-weight:600;border-bottom:2px solid #374151;white-space:nowrap}
+            .inline-table tbody td{padding:8px 12px;border-bottom:1px solid #e5e7eb;color:#374151}
+            .inline-table tbody tr:nth-child(even){background:#f9fafb}
+            .inline-table tbody tr:hover{background:#f3f4f6}
+            .inline-table .num{text-align:right;font-variant-numeric:tabular-nums}
+            .table-caption{font-size:12px;color:#9ca3af;margin-top:8px}
+        </style>
+        """
+
+        header_cells = "".join(f"<th>{c}</th>" for c in col_names)
+        body_rows = ""
+        for row in display_rows:
+            cells = ""
+            for c in col_names:
+                val = row.get(c, "")
+                cls = ' class="num"' if isinstance(val, (int, float)) else ""
+                cells += f"<td{cls}>{val}</td>"
+            body_rows += f"<tr>{cells}</tr>"
+
+        trunc_note = ""
+        if total > max_display:
+            trunc_note = f"<p class='table-caption'>显示前 {max_display} 条，共 {total} 条记录</p>"
+        else:
+            trunc_note = f"<p class='table-caption'>共 {total} 条记录</p>"
+
+        return f"""{style}
+        <div style="overflow-x:auto;border-radius:8px;border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+            <div style="padding:10px 16px;background:#f8fafc;border-bottom:1px solid #e5e7eb;font-weight:600;font-size:14px;color:#1f2937">{title}</div>
+            <table class="inline-table">
+                <thead><tr>{header_cells}</tr></thead>
+                <tbody>{body_rows}</tbody>
+            </table>
+        </div>
+        {trunc_note}"""
+
+    @staticmethod
     def analyze_data(question: str, results: dict) -> dict:
         if not results.get("success", False):
             return {"success": False, "error": "查询结果为空"}
-        
-        model = AIModelRepository.get_default_model()
-        if not model:
-            return {"success": True, "analysis": DBQueryService.format_results(results)}
-        
+
         data = results.get("results", [])
         columns = results.get("columns", [])
-        
+
+        # 构建结构化表格数据
+        table_data = DBQueryService.to_structured_table(results, title=question[:30])
+
+        # 尝试生成图表建议
+        chart_data = None
+        try:
+            from app.models.report import ReportService
+            report_result = ReportService.generate_report_with_data(question, results)
+            if report_result.get("success"):
+                chart_data = {
+                    "chart_type": report_result.get("chart_type", "bar"),
+                    "option": report_result.get("option", {})
+                }
+        except Exception:
+            pass
+
+        model = AIModelRepository.get_default_model()
+        if not model:
+            return {
+                "success": True,
+                "analysis": DBQueryService.format_results(results),
+                "raw_data": data,
+                "columns": columns,
+                "table_data": table_data,
+                "chart_data": chart_data
+            }
+
         data_str = json.dumps(data, ensure_ascii=False, indent=2)
-        
+
         system_prompt = """你是一个专业的数据分析助手。请根据用户的问题和查询结果，进行深度分析并给出专业的分析报告。
 
 分析要求：
@@ -298,16 +414,15 @@ class DBQueryService:
 4. 如果数据包含时间序列，分析趋势变化
 5. 如果数据包含分类信息，分析分布情况
 6. 如果数据包含多个维度，进行交叉分析
-7. 输出格式清晰，易于理解
 
-请用中文输出详细的分析报告。"""
+请用中文输出，语言简洁专业，200字以内。结尾用一行 [INSIGHTS] 列出 2-3 个关键洞察，每行一条，以 - 开头。"""
 
         user_prompt = f"""用户问题：{question}
 
-查询结果：
+查询结果（共 {len(data)} 条）：
 {data_str}
 
-请进行深度分析："""
+请进行分析："""
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -318,16 +433,38 @@ class DBQueryService:
             result = AIModelService.chat_completion(model, messages, stream=False)
             if "choices" in result and result["choices"]:
                 analysis = result["choices"][0]["message"]["content"]
+
+                # 解析洞察列表
+                insights = []
+                if "[INSIGHTS]" in analysis:
+                    parts = analysis.split("[INSIGHTS]")
+                    analysis = parts[0].strip()
+                    for line in parts[1].strip().split("\n"):
+                        line = line.strip().lstrip("- ").strip()
+                        if line:
+                            insights.append(line)
+
                 return {
                     "success": True,
                     "analysis": analysis,
+                    "insights": insights,
                     "raw_data": data,
-                    "columns": columns
+                    "columns": columns,
+                    "table_data": table_data,
+                    "chart_data": chart_data
                 }
         except Exception:
             pass
-        
-        return {"success": True, "analysis": DBQueryService.format_results(results), "raw_data": data, "columns": columns}
+
+        return {
+            "success": True,
+            "analysis": DBQueryService.format_results(results),
+            "insights": [],
+            "raw_data": data,
+            "columns": columns,
+            "table_data": table_data,
+            "chart_data": chart_data
+        }
 
     @staticmethod
     def search_data_warehouse(keyword: str, limit: int = 20) -> dict:

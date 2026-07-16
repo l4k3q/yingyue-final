@@ -170,7 +170,11 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
 
         self.write_message({"type": "typing", "data": f"正在分析意图: {IntentService.INTENT_TYPES.get(intent, intent)}..."})
 
-        if intent == "digital_employee":
+        # 检测天气相关关键词 → 自动路由到 @天气 数字员工
+        weather_keywords = ["天气", "气温", "温度", "下雨", "刮风", "湿度", "晴", "阴", "多云", "下雪", "台风"]
+        if intent == "general_chat" and any(kw in content for kw in weather_keywords):
+            self.handle_employee_message("天气", content)
+        elif intent == "digital_employee":
             employee_name = params.get("employee_name", "")
             args = params.get("args", "")
             self.handle_employee_message(employee_name, args)
@@ -202,12 +206,47 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
         self.write_message({"type": "typing", "data": f"正在调用 @{employee_name}..."})
         
         try:
-            result = DigitalEmployeeService.execute(employee, {"query": args, "city": args.split()[-1] if args else ""})
+            # 智能提取城市名（天气员工需要纯城市名调用 wttr.in API）
+            # wttr.in 对中文城市名解析不稳定，使用中英映射
+            CITY_MAP = {
+                "成都": "Chengdu", "北京": "Beijing", "上海": "Shanghai", "深圳": "Shenzhen",
+                "广州": "Guangzhou", "杭州": "Hangzhou", "武汉": "Wuhan", "南京": "Nanjing",
+                "重庆": "Chongqing", "西安": "Xian", "天津": "Tianjin", "苏州": "Suzhou",
+                "长沙": "Changsha", "郑州": "Zhengzhou", "青岛": "Qingdao", "大连": "Dalian",
+                "厦门": "Xiamen", "福州": "Fuzhou", "昆明": "Kunming", "哈尔滨": "Harbin",
+                "沈阳": "Shenyang", "济南": "Jinan", "合肥": "Hefei", "南昌": "Nanchang",
+                "贵阳": "Guiyang", "南宁": "Nanning", "海口": "Haikou", "兰州": "Lanzhou",
+                "拉萨": "Lhasa", "乌鲁木齐": "Urumqi",
+            }
+            if employee.get("code_name") == "weather" and args:
+                # 优先匹配已知城市名（避免把"生成一张"等误判为城市）
+                city_cn = None
+                for cn_name in CITY_MAP:
+                    if cn_name in args:
+                        city_cn = cn_name
+                        break
+                if not city_cn:
+                    # 去除常见非城市词后提取前2-3个汉字
+                    text = args.strip()
+                    for word in ["生成一张", "生成", "一张", "查询", "近五天", "近三天", "今天", "明天",
+                                 "天气预报", "天气", "气温", "温度", "的", "表格", "情况", "怎么样", "如何"]:
+                        text = text.replace(word, "")
+                    import re as re_mod
+                    city_match = re_mod.match(r'[一-鿿]{2,3}', text.strip())
+                    city_cn = city_match.group(0) if city_match else (text.strip().split()[0] if text.strip().split() else text.strip()[:2])
+                city = CITY_MAP.get(city_cn, city_cn) if city_cn else args.strip()[:2]
+            elif args:
+                parts = args.split()
+                city = parts[-1] if parts else args.strip()
+            else:
+                city = ""
+            result = DigitalEmployeeService.execute(employee, {"query": args, "city": city})
             
             if result.get("success", False):
                 content = result.get("content", "")
                 card_template = employee.get("card_template", "")
-                
+
+                # 天气预报卡片：先渲染卡片，再发送预报表格
                 if card_template and isinstance(content, dict):
                     try:
                         ai_response = card_template.format(**content)
@@ -217,16 +256,37 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
                     ai_response = json.dumps(content, ensure_ascii=False, indent=2)
                 else:
                     ai_response = str(content)
+
+                # 天气员工有预报数据时发送表格
+                if employee.get("code_name") == "weather" and isinstance(content, dict):
+                    forecast = content.get("forecast", [])
+                    if forecast:
+                        forecast_table = {
+                            "title": f"{content.get('location', '')} 未来{len(forecast)}天天气预报",
+                            "columns": [
+                                {"key": "date", "title": "日期"},
+                                {"key": "max_temp", "title": "最高温", "align": "right"},
+                                {"key": "min_temp", "title": "最低温", "align": "right"},
+                                {"key": "condition", "title": "天气"},
+                                {"key": "wind", "title": "风力", "align": "right"},
+                                {"key": "humidity", "title": "湿度", "align": "right"},
+                            ],
+                            "rows": forecast,
+                            "total_count": len(forecast),
+                            "display_count": len(forecast),
+                            "truncated": False,
+                        }
+                        self.write_message({"type": "table", "data": forecast_table})
             else:
                 ai_response = f"调用 @{employee_name} 失败: {result.get('error', '未知错误')}"
-            
+
             elapsed_time = round(time.time() - start_time, 2)
             token_count = len(ai_response) // 4
-            
+
             if self.conversation_id:
                 # 注意：handle_message 已写入用户消息，此处只写入助手回复
                 ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
-            
+
             self.write_message({"type": "stream", "data": ai_response})
             self.write_message({"type": "metadata", "data": {"time": elapsed_time, "tokens": token_count}})
             self.write_message({"type": "done"})
@@ -236,25 +296,36 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
 
     def handle_database_query(self, content):
         start_time = time.time()
-        
+
         try:
             self.write_message({"type": "typing", "data": "正在查询数据库..."})
-            
+
             result = DBQueryService.query(content)
-            
+
             if result.get("success", False):
-                formatted_result = DBQueryService.format_results(result)
-                ai_response = f"数据库查询结果：\n\n{formatted_result}"
+                # 1. 发送结构化表格
+                title = content[:30] if len(content) <= 30 else content[:30] + "..."
+                table_data = DBQueryService.to_structured_table(result, title=title)
+                if table_data:
+                    self.write_message({"type": "table", "data": table_data})
+
+                # 2. 发送简要文字总结
+                count = result.get("count", 0)
+                summary = f"查询完成，共返回 {count} 条结果。具体数据请查看上方表格。"
+                self.write_message({"type": "stream", "data": summary})
+
+                # 3. 持久化（结构化 + 文本）
+                if self.conversation_id:
+                    ConversationRepository.add_message(self.conversation_id, "assistant",
+                        json.dumps({"text": summary, "table": table_data}, ensure_ascii=False))
             else:
-                ai_response = f"数据库查询失败: {result.get('error', '未知错误')}"
-            
-            ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
-            
+                error_text = f"数据库查询失败: {result.get('error', '未知错误')}"
+                self.write_message({"type": "error", "data": error_text})
+                if self.conversation_id:
+                    ConversationRepository.add_message(self.conversation_id, "assistant", error_text)
+
             elapsed_time = round(time.time() - start_time, 2)
-            token_count = len(ai_response) // 4
-            
-            self.write_message({"type": "stream", "data": ai_response})
-            self.write_message({"type": "metadata", "data": {"time": elapsed_time, "tokens": token_count}})
+            self.write_message({"type": "metadata", "data": {"time": elapsed_time}})
             self.write_message({"type": "done"})
         except Exception as e:
             error_msg = f"数据库查询错误: {str(e)}"
@@ -263,28 +334,42 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
 
     def handle_report_generation(self, content):
         start_time = time.time()
-        
+
         try:
             self.write_message({"type": "typing", "data": "正在生成报表..."})
-            
+
             result = ReportService.generate_report(content)
-            
+
             if result.get("success", False):
                 chart_type = result.get("chart_type", "bar")
                 option = result.get("option", {})
                 data = result.get("data", [])
-                
-                ConversationRepository.add_message(self.conversation_id, "assistant", f"报表生成成功: {content}")
-                
+                columns = result.get("columns", [])
+
+                # 1. 发送图表
+                self.write_message({"type": "chart", "data": {"chart_type": chart_type, "option": option}})
+
+                # 2. 发送数据表格（图表下方）
+                table_data = DBQueryService.to_structured_table(
+                    {"success": True, "columns": columns, "results": data, "count": len(data)},
+                    title=content[:30]
+                )
+                if table_data:
+                    self.write_message({"type": "table", "data": table_data})
+
+                # 3. 持久化
+                if self.conversation_id:
+                    ConversationRepository.add_message(self.conversation_id, "assistant",
+                        json.dumps({"text": f"报表生成成功: {content}", "chart": {"chart_type": chart_type, "option": option}, "table": table_data}, ensure_ascii=False))
+
                 elapsed_time = round(time.time() - start_time, 2)
                 token_count = len(str(option)) // 4
-                
-                self.write_message({"type": "chart", "data": {"chart_type": chart_type, "option": option}})
                 self.write_message({"type": "metadata", "data": {"time": elapsed_time, "tokens": token_count}})
                 self.write_message({"type": "done"})
             else:
                 ai_response = f"报表生成失败: {result.get('error', '未知错误')}"
-                ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
+                if self.conversation_id:
+                    ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
                 self.write_message({"type": "stream", "data": ai_response})
                 self.write_message({"type": "done"})
         except Exception as e:
@@ -294,26 +379,36 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
 
     def handle_data_search(self, content):
         start_time = time.time()
-        
+
         try:
             self.write_message({"type": "typing", "data": "正在数据仓库中搜索..."})
-            
+
             keyword = content
             result = DBQueryService.search_data_warehouse(keyword)
-            
+
             if result.get("success", False):
-                formatted_result = DBQueryService.format_results(result)
-                ai_response = f"数据搜索结果：\n\n{formatted_result}"
+                # 1. 发送结构化表格
+                table_data = DBQueryService.to_structured_table(result, title=f"搜索: {content[:25]}")
+                if table_data:
+                    self.write_message({"type": "table", "data": table_data})
+
+                # 2. 简要总结
+                count = result.get("count", 0)
+                summary = f"在数据仓库中找到 {count} 条与「{content}」相关的结果。"
+                self.write_message({"type": "stream", "data": summary})
+
+                # 3. 持久化
+                if self.conversation_id:
+                    ConversationRepository.add_message(self.conversation_id, "assistant",
+                        json.dumps({"text": summary, "table": table_data}, ensure_ascii=False))
             else:
-                ai_response = f"数据搜索失败: {result.get('error', '未知错误')}"
-            
-            ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
-            
+                error_text = f"数据搜索失败: {result.get('error', '未知错误')}"
+                self.write_message({"type": "error", "data": error_text})
+                if self.conversation_id:
+                    ConversationRepository.add_message(self.conversation_id, "assistant", error_text)
+
             elapsed_time = round(time.time() - start_time, 2)
-            token_count = len(ai_response) // 4
-            
-            self.write_message({"type": "stream", "data": ai_response})
-            self.write_message({"type": "metadata", "data": {"time": elapsed_time, "tokens": token_count}})
+            self.write_message({"type": "metadata", "data": {"time": elapsed_time}})
             self.write_message({"type": "done"})
         except Exception as e:
             error_msg = f"数据搜索错误: {str(e)}"
@@ -322,38 +417,46 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
 
     def handle_data_analysis(self, content):
         start_time = time.time()
-        
+
         try:
             self.write_message({"type": "typing", "data": "正在进行深度数据分析..."})
-            
+
             query_result = DBQueryService.query(content)
-            
+
             if query_result.get("success", False):
                 analysis_result = DBQueryService.analyze_data(content, query_result)
-                ai_response = analysis_result.get("analysis", DBQueryService.format_results(query_result))
+                ai_analysis = analysis_result.get("analysis", "")
+
+                if analysis_result.get("success", False) and ai_analysis:
+                    # 构建 analysis_card 消息
+                    card_data = {
+                        "title": content[:30] if len(content) <= 30 else content[:30] + "...",
+                        "analysis_text": ai_analysis,
+                        "insights": analysis_result.get("insights", []),
+                        "table": analysis_result.get("table_data"),
+                        "chart": analysis_result.get("chart_data")
+                    }
+                    self.write_message({"type": "analysis_card", "data": card_data})
+
+                    # 持久化
+                    if self.conversation_id:
+                        ConversationRepository.add_message(self.conversation_id, "assistant",
+                            json.dumps({"analysis_card": card_data}, ensure_ascii=False))
+                else:
+                    self.write_message({"type": "stream", "data": ai_analysis or "分析完成但无结果。"})
             else:
-                ai_response = f"数据分析失败: {query_result.get('error', '未知错误')}"
-            
-            ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
-            
+                error_text = f"数据分析失败: {query_result.get('error', '未知错误')}"
+                self.write_message({"type": "error", "data": error_text})
+                if self.conversation_id:
+                    ConversationRepository.add_message(self.conversation_id, "assistant", error_text)
+
             elapsed_time = round(time.time() - start_time, 2)
-            token_count = len(ai_response) // 4
-            
-            self.write_message({"type": "stream", "data": ai_response})
-            self.write_message({"type": "metadata", "data": {"time": elapsed_time, "tokens": token_count}})
+            self.write_message({"type": "metadata", "data": {"time": elapsed_time}})
             self.write_message({"type": "done"})
         except Exception as e:
             error_msg = f"数据分析错误: {str(e)}"
             self.write_message({"type": "error", "data": error_msg})
             self.handle_general_chat(content)
-
-    def _get_model(self):
-        """Get the selected model, or fall back to the default model."""
-        if self.selected_model_id:
-            model = AIModelRepository.get_model_by_id(self.selected_model_id)
-            if model and model.get("status") == 1:
-                return model
-        return AIModelRepository.get_default_model()
 
     def handle_relationship_mining(self, content):
         start_time = time.time()

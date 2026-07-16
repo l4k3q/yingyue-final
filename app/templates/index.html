@@ -381,6 +381,10 @@
             line-height: 1.6;
             word-wrap: break-word;
         }
+        .message-wide .message-content {
+            max-width: none;
+            min-width: 300px;
+            width: 95%;
         .speak-btn {
             width: 32px;
             height: 32px;
@@ -751,6 +755,156 @@
             cursor: pointer;
             font-size: 20px;
         }
+
+        /* ===== 数据表格样式 ===== */
+        .data-table-card {
+            width: 100%;
+            max-width: 100%;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: #f8fafc;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .card-header .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1f2937;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-badge {
+            font-size: 12px;
+            color: #6b7280;
+            background: #f3f4f6;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+        .data-table-wrapper {
+            overflow-x: auto;
+            max-height: 360px;
+            overflow-y: auto;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .data-table thead {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .data-table thead th {
+            background: #f1f5f9;
+            color: #374151;
+            font-weight: 600;
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 2px solid #e5e7eb;
+            white-space: nowrap;
+        }
+        .data-table tbody td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #f3f4f6;
+            color: #4b5563;
+        }
+        .data-table tbody tr:hover {
+            background-color: #f8fafc;
+        }
+        .data-table tbody tr:nth-child(even) {
+            background-color: #fafbfc;
+        }
+        .data-table tbody tr:nth-child(even):hover {
+            background-color: #f1f5f9;
+        }
+        .data-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .data-table .text-right {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .data-table .text-center {
+            text-align: center;
+        }
+        .table-footer {
+            padding: 8px 16px;
+            background: #f8fafc;
+            border-top: 1px solid #e5e7eb;
+            font-size: 12px;
+            color: #9ca3af;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* ===== 分析卡片样式 ===== */
+        .analysis-card {
+            width: 100%;
+        }
+        .analysis-card .card-body {
+            padding: 16px;
+        }
+        .analysis-text {
+            font-size: 14px;
+            line-height: 1.7;
+            color: #374151;
+            margin-bottom: 12px;
+            padding: 12px 16px;
+            background: #f0f9ff;
+            border-left: 3px solid #2563eb;
+            border-radius: 4px;
+        }
+        .insights-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 16px 0;
+        }
+        .insights-list li {
+            padding: 6px 0 6px 20px;
+            font-size: 13px;
+            color: #4b5563;
+            position: relative;
+        }
+        .insights-list li::before {
+            content: '';
+            position: absolute;
+            left: 4px;
+            top: 12px;
+            width: 6px;
+            height: 6px;
+            background: #2563eb;
+            border-radius: 50%;
+        }
+        .section-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            margin: 12px 0 8px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .chart-container {
+            margin-top: 12px;
+        }
+        .sql-display {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: #1e293b;
+            color: #e2e8f0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
     </style>
 </head>
 <body>
@@ -959,9 +1113,19 @@
                         appendStreamChunk(data.data);
                         break;
                     case 'stream':
+                        removeTyping();
                         appendMessage('assistant', data.data);
                         break;
+                    case 'table':
+                        removeTyping();
+                        appendTableMessage(data.data);
+                        break;
+                    case 'analysis_card':
+                        removeTyping();
+                        appendAnalysisCardMessage(data.data);
+                        break;
                     case 'chart':
+                        removeTyping();
                         appendChartMessage(data.data);
                         break;
                     case 'metadata':
@@ -973,6 +1137,7 @@
                         streamingContentDiv = null;
                         break;
                     case 'error':
+                        removeTyping();
                         showError(data.data);
                         break;
                     case 'messages_loaded':
@@ -1055,6 +1220,33 @@
         function loadMessages(messages) {
             clearMessages();
             messages.forEach(msg => {
+                if (msg.role === 'assistant') {
+                    // 尝试恢复结构化数据
+                    try {
+                        const parsed = JSON.parse(msg.content);
+                        if (parsed.analysis_card) {
+                            appendAnalysisCardMessage(parsed.analysis_card);
+                            return;
+                        }
+                        if (parsed.table) {
+                            appendTableMessage(parsed.table);
+                            if (parsed.text) {
+                                appendMessage('assistant', parsed.text);
+                            }
+                            return;
+                        }
+                        if (parsed.chart && parsed.table) {
+                            appendChartMessage(parsed.chart);
+                            appendTableMessage(parsed.table);
+                            if (parsed.text) {
+                                appendMessage('assistant', parsed.text);
+                            }
+                            return;
+                        }
+                    } catch (e) {
+                        // 非 JSON，按普通文本渲染
+                    }
+                }
                 appendMessage(msg.role, msg.content);
             });
         }
@@ -1063,24 +1255,192 @@
             chatArea.innerHTML = '';
         }
 
-        function appendStreamingMessage() {
+        function appendTableMessage(tableData) {
             if (emptyState) {
                 emptyState.style.display = 'none';
             }
 
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'message assistant';
-            messageDiv.id = 'streamingMessage';
+            messageDiv.className = 'message assistant message-wide';
+
+            // 构建表头
+            let headerCells = '';
+            tableData.columns.forEach(col => {
+                const alignClass = col.align === 'right' ? 'text-right' : (col.align === 'center' ? 'text-center' : '');
+                headerCells += `<th class="${alignClass}">${col.title || col.key}</th>`;
+            });
+
+            // 构建表体
+            let bodyRows = '';
+            tableData.rows.forEach(row => {
+                let cells = '';
+                tableData.columns.forEach(col => {
+                    const val = row[col.key] !== undefined && row[col.key] !== null ? String(row[col.key]) : '';
+                    const alignClass = col.align === 'right' ? 'text-right' : (col.align === 'center' ? 'text-center' : '');
+                    cells += `<td class="${alignClass}">${val}</td>`;
+                });
+                bodyRows += `<tr>${cells}</tr>`;
+            });
+
+            // 截断提示
+            let footerHtml = '';
+            if (tableData.truncated) {
+                footerHtml = `<div class="table-footer">
+                    <span>显示 ${tableData.display_count} / ${tableData.total_count} 条记录</span>
+                    <span style="color:#f59e0b;"><i class="fas fa-info-circle"></i> 结果已截断</span>
+                </div>`;
+            } else {
+                footerHtml = `<div class="table-footer">
+                    <span>共 ${tableData.total_count || tableData.rows.length} 条记录</span>
+                </div>`;
+            }
+
+            // SQL 展示（可折叠）
+            let sqlHtml = '';
+            if (tableData.sql) {
+                sqlHtml = `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:12px;color:#6b7280;">查看 SQL</summary><div class="sql-display">${tableData.sql}</div></details>`;
+            }
 
             messageDiv.innerHTML = `
-                <div class="message-avatar"><i class="fas fa-robot"></i></div>
-                <div class="message-content"></div>
+                <div class="message-avatar"><i class="fas fa-table"></i></div>
+                <div class="message-content" style="padding:0;overflow:hidden;border-radius:12px;">
+                    <div class="data-table-card">
+                        <div class="card-header">
+                            <span class="card-title">
+                                <i class="fas fa-table" style="color:#2563eb;"></i> ${tableData.title || '数据查询结果'}
+                            </span>
+                            <span class="card-badge">${tableData.total_count || tableData.rows.length} 条</span>
+                        </div>
+                        <div class="data-table-wrapper">
+                            <table class="data-table">
+                                <thead><tr>${headerCells}</tr></thead>
+                                <tbody>${bodyRows}</tbody>
+                            </table>
+                        </div>
+                        ${footerHtml}
+                    </div>
+                    ${sqlHtml}
+                </div>
+                <div class="message-metadata"></div>
+            `;
+
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function appendAnalysisCardMessage(cardData) {
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant message-wide';
+
+            // AI 洞察列表
+            let insightsHtml = '';
+            if (cardData.insights && cardData.insights.length > 0) {
+                insightsHtml = '<div class="section-title">关键洞察</div><ul class="insights-list">';
+                cardData.insights.forEach(insight => {
+                    insightsHtml += `<li>${insight}</li>`;
+                });
+                insightsHtml += '</ul>';
+            }
+
+            // AI 分析文本
+            let analysisHtml = '';
+            if (cardData.analysis_text) {
+                analysisHtml = `<div class="analysis-text">${cardData.analysis_text.replace(/\n/g, '<br>')}</div>`;
+            }
+
+            // 数据表格
+            let tableHtml = '';
+            if (cardData.table && cardData.table.columns && cardData.table.rows && cardData.table.rows.length > 0) {
+                tableHtml = '<div class="section-title">数据明细</div>';
+                let headerCells = '';
+                cardData.table.columns.forEach(col => {
+                    const alignClass = col.align === 'right' ? 'text-right' : (col.align === 'center' ? 'text-center' : '');
+                    headerCells += `<th class="${alignClass}">${col.title || col.key}</th>`;
+                });
+                let bodyRows = '';
+                cardData.table.rows.forEach(row => {
+                    let cells = '';
+                    cardData.table.columns.forEach(col => {
+                        const val = row[col.key] !== undefined && row[col.key] !== null ? String(row[col.key]) : '';
+                        const alignClass = col.align === 'right' ? 'text-right' : (col.align === 'center' ? 'text-center' : '');
+                        cells += `<td class="${alignClass}">${val}</td>`;
+                    });
+                    bodyRows += `<tr>${cells}</tr>`;
+                });
+                tableHtml += `
+                    <div class="data-table-wrapper">
+                        <table class="data-table">
+                            <thead><tr>${headerCells}</tr></thead>
+                            <tbody>${bodyRows}</tbody>
+                        </table>
+                    </div>`;
+            }
+
+            // 图表
+            let chartHtml = '';
+            const chartId = 'analysis-chart-' + Date.now();
+            if (cardData.chart && cardData.chart.option) {
+                chartHtml = `
+                    <div class="chart-container">
+                        <div class="section-title">可视化图表</div>
+                        <div id="${chartId}" style="width:100%;height:350px;"></div>
+                    </div>`;
+            }
+
+            messageDiv.innerHTML = `
+                <div class="message-avatar"><i class="fas fa-chart-pie"></i></div>
+                <div class="message-content" style="padding:0;overflow:hidden;border-radius:12px;">
+                    <div class="analysis-card">
+                        <div class="card-header">
+                            <span class="card-title">
+                                <i class="fas fa-chart-line" style="color:#2563eb;"></i> ${cardData.title || '数据分析结果'}
+                            </span>
+                        </div>
+                        <div class="card-body">
+                            ${analysisHtml}
+                            ${insightsHtml}
+                            ${tableHtml}
+                            ${chartHtml}
+                        </div>
+                    </div>
+                </div>
                 <div class="message-metadata"></div>
             `;
 
             chatArea.appendChild(messageDiv);
             chatArea.scrollTop = chatArea.scrollHeight;
 
+            // 初始化图表
+            if (cardData.chart && cardData.chart.option && chartId) {
+                setTimeout(() => {
+                    const chartDom = document.getElementById(chartId);
+                    if (chartDom) {
+                        const myChart = echarts.init(chartDom);
+                        myChart.setOption(cardData.chart.option);
+                        window.addEventListener('resize', () => myChart.resize());
+                    }
+                }, 200);
+            }
+        }
+
+        function appendStreamingMessage() {
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+            messageDiv.id = 'streamingMessage';
+            messageDiv.innerHTML = `
+                <div class="message-avatar"><i class="fas fa-robot"></i></div>
+                <div class="message-content"></div>
+                <div class="message-metadata"></div>
+            `;
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
             streamingMessageDiv = messageDiv;
             streamingContentDiv = messageDiv.querySelector('.message-content');
         }
@@ -1092,7 +1452,7 @@
             streamingContentDiv.textContent += text;
             chatArea.scrollTop = chatArea.scrollHeight;
         }
-        
+
         function appendMessage(role, content) {
             if (emptyState) {
                 emptyState.style.display = 'none';
@@ -1180,10 +1540,10 @@
             if (emptyState) {
                 emptyState.style.display = 'none';
             }
-            
+
             const chartId = 'chart-' + Date.now();
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'message assistant';
+            messageDiv.className = 'message assistant message-wide';
             
             messageDiv.innerHTML = `
                 <div class="message-avatar"><i class="fas fa-chart-bar"></i></div>
@@ -1254,7 +1614,7 @@
                 data: { content: content, model_id: selectedModelId }
             }));
         }
-        
+
         function newConversation() {
             ws.send(JSON.stringify({ type: 'new_conversation' }));
         }
