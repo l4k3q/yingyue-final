@@ -3,68 +3,9 @@
 <div class="admin-page">
     <div class="page-header">
         <h2>菜单管理</h2>
-        <div class="header-actions">
-            <button class="layui-btn" onclick="previewMenu()">
-                <i class="layui-icon layui-icon-eye"></i> 预览菜单
-            </button>
-        </div>
     </div>
 
-    <div class="menu-container">
-        <div class="layui-row">
-            <div class="layui-col-md6">
-                <div class="layui-card">
-                    <div class="layui-card-header">菜单结构</div>
-                    <div class="layui-card-body">
-                        <div id="menuTree" class="layui-tree"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="layui-col-md6">
-                <div class="layui-card">
-                    <div class="layui-card-header">菜单预览</div>
-                    <div class="layui-card-body">
-                        <div class="layui-nav layui-nav-tree" id="menuPreview">
-                            {% for func in functions %}
-                            <li class="layui-nav-item">
-                                {% if func['icon'] %}
-                                <a href="{{ func['url'] if func['url'] else 'javascript:void(0);' }}">
-                                    <i class="layui-icon {{ func['icon'] }}"></i>
-                                    <span>{{ func['name'] }}</span>
-                                </a>
-                                {% else %}
-                                <a href="{{ func['url'] if func['url'] else 'javascript:void(0);' }}">
-                                    <span>{{ func['name'] }}</span>
-                                </a>
-                                {% end %}
-                                {% if 'children' in func %}
-                                <dl class="layui-nav-child">
-                                    {% for child in func['children'] %}
-                                    <dd>
-                                        {% if child['icon'] %}
-                                        <a href="{{ child['url'] if child['url'] else 'javascript:void(0);' }}">
-                                            <i class="layui-icon {{ child['icon'] }}"></i>
-                                            <span>{{ child['name'] }}</span>
-                                        </a>
-                                        {% else %}
-                                        <a href="{{ child['url'] if child['url'] else 'javascript:void(0);' }}">
-                                            <span>{{ child['name'] }}</span>
-                                        </a>
-                                        {% end %}
-                                    </dd>
-                                    {% end %}
-                                </dl>
-                                {% end %}
-                            </li>
-                            {% end %}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="layui-card" style="margin-top: 20px;">
+    <div class="layui-card">
         <div class="layui-card-header">功能与菜单映射关系</div>
         <div class="layui-card-body">
             <table class="layui-table">
@@ -76,6 +17,7 @@
                         <th>URL</th>
                         <th>层级</th>
                         <th>排序</th>
+                        <th>状态</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -87,8 +29,15 @@
                         <td>{{ func['url'] if func['url'] else '-' }}</td>
                         <td>一级菜单</td>
                         <td>{{ func['sort_order'] }}</td>
+                        <td>
+                            {% if func['status'] == 1 %}
+                            <span class="layui-badge layui-bg-green">启用</span>
+                            {% else %}
+                            <span class="layui-badge layui-bg-red">禁用</span>
+                            {% end %}
+                        </td>
                     </tr>
-                    {% if 'children' in func %}
+                    {% if func.get('children') %}
                     {% for child in func['children'] %}
                     <tr>
                         <td>{{ child['id'] }}</td>
@@ -97,6 +46,13 @@
                         <td>{{ child['url'] if child['url'] else '-' }}</td>
                         <td>二级菜单</td>
                         <td>{{ child['sort_order'] }}</td>
+                        <td>
+                            {% if child['status'] == 1 %}
+                            <span class="layui-badge layui-bg-green">启用</span>
+                            {% else %}
+                            <span class="layui-badge layui-bg-red">禁用</span>
+                            {% end %}
+                        </td>
                     </tr>
                     {% end %}
                     {% end %}
@@ -106,37 +62,4 @@
         </div>
     </div>
 </div>
-
-<script src="{{ static_url('dist/layui/layui.js') }}"></script>
-<script>
-layui.use(['tree', 'nav'], function() {
-    var tree = layui.tree;
-    
-    var treeData = {% raw function_tree_json %};
-    
-    tree.render({
-        elem: '#menuTree',
-        data: treeData,
-        showCheckbox: false,
-        id: 'menuTree',
-        click: function(obj) {
-            console.log('点击:', obj.data);
-        }
-    });
-    
-    layui.element.init();
-});
-
-function previewMenu() {
-    layui.use(['layer'], function() {
-        var layer = layui.layer;
-        layer.open({
-            type: 1,
-            title: '菜单预览',
-            area: ['300px', '500px'],
-            content: document.getElementById('menuPreview').innerHTML
-        });
-    });
-}
-</script>
 {% end %}

@@ -1,85 +1,151 @@
 {% extends "../admin/base.html" %}
 {% block body %}
+<style>
+    .permission-tree {
+        background: #fff;
+        border: 1px solid #E5E6EB;
+        border-radius: 8px;
+        padding: 8px 0;
+        min-height: 260px;
+    }
+    .permission-node {
+        padding: 10px 16px;
+        border-bottom: 1px solid #F2F3F5;
+    }
+    .permission-node:last-child {
+        border-bottom: none;
+    }
+    .permission-node.parent {
+        background: #F7F8FA;
+        font-weight: 600;
+    }
+    .permission-node.child {
+        padding-left: 46px;
+    }
+    .permission-node label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        cursor: pointer;
+    }
+    .permission-node input {
+        width: 16px;
+        height: 16px;
+    }
+    .permission-url {
+        margin-left: auto;
+        color: #86909C;
+        font-size: 12px;
+        font-family: Consolas, monospace;
+        font-weight: 400;
+    }
+</style>
+
 <div class="admin-page">
     <div class="page-header">
         <h2>角色权限配置 - {{ role['name'] if role else '' }}</h2>
         <div class="header-actions">
-            <button class="layui-btn" onclick="selectAll()">
+            <button class="layui-btn" type="button" onclick="selectAll()">
                 <i class="layui-icon layui-icon-check"></i> 全选
             </button>
-            <button class="layui-btn layui-btn-primary" onclick="clearAll()">
+            <button class="layui-btn layui-btn-primary" type="button" onclick="clearAll()">
                 <i class="layui-icon layui-icon-close"></i> 取消全选
             </button>
         </div>
     </div>
 
-    <div class="tree-container">
-        <form id="permissionsForm" action="/admin/roles/functions" method="post">
-            <input type="hidden" name="role_id" value="{{ role['id'] if role else 0 }}">
-            <input type="hidden" name="function_ids" id="functionIds">
-            
-            <div id="functionTree" class="layui-tree"></div>
-        </form>
-    </div>
+    <form id="permissionsForm" action="/admin/roles/functions" method="post">
+        {% module xsrf_form_html() %}
+        <input type="hidden" name="role_id" value="{{ role['id'] if role else 0 }}">
+        <input type="hidden" name="function_ids" id="functionIds">
+
+        <div class="permission-tree">
+            {% for func in function_nodes %}
+            <div class="permission-node parent">
+                <label>
+                    <input class="permission-checkbox parent-checkbox" type="checkbox" name="function_check" value="{{ func['id'] }}" data-node-id="{{ func['id'] }}" {% if func['id'] in selected_ids %}checked{% end %}>
+                    <i class="layui-icon {{ func.get('icon_class', 'layui-icon-app') }}"></i>
+                    <span>{{ func['name'] }}</span>
+                    <span class="permission-url">{{ func['url'] if func['url'] else '-' }}</span>
+                </label>
+            </div>
+            {% if func.get('children') %}
+            {% for child in func['children'] %}
+            <div class="permission-node child">
+                <label>
+                    <input class="permission-checkbox child-checkbox" type="checkbox" name="function_check" value="{{ child['id'] }}" data-parent-id="{{ func['id'] }}" {% if child['id'] in selected_ids %}checked{% end %}>
+                    <i class="layui-icon {{ child.get('icon_class', 'layui-icon-app') }}"></i>
+                    <span>{{ child['name'] }}</span>
+                    <span class="permission-url">{{ child['url'] if child['url'] else '-' }}</span>
+                </label>
+            </div>
+            {% end %}
+            {% end %}
+            {% end %}
+        </div>
+    </form>
 
     <div class="layui-modal-footer" style="margin-top: 20px;">
-        <button class="layui-btn layui-btn-primary" onclick="window.location.href='/admin/roles'">返回</button>
-        <button class="layui-btn" onclick="submitPermissions()">保存配置</button>
+        <button class="layui-btn layui-btn-primary" type="button" onclick="window.location.href='/admin/roles'">返回</button>
+        <button class="layui-btn" type="button" onclick="submitPermissions()">保存配置</button>
     </div>
 </div>
+{% end %}
 
-<script src="{{ static_url('dist/layui/layui.js') }}"></script>
+{% block script %}
 <script>
-layui.use(['tree'], function() {
-    var tree = layui.tree;
-    
-    var selectedIds = {% raw selected_ids %};
-
-    var treeData = {% raw function_tree %};
-    
-    tree.render({
-        elem: '#functionTree',
-        data: treeData,
-        showCheckbox: true,
-        id: 'functionTree',
-        isJump: false,
-        oncheck: function(obj) {
-            var checkedIds = [];
-            var checkedNodes = tree.getChecked('functionTree');
-            checkedNodes.forEach(function(node) {
-                checkedIds.push(node.id);
-            });
-            document.getElementById('functionIds').value = checkedIds.join(',');
-        },
-        onready: function() {
-            if (selectedIds.length > 0) {
-                tree.checkNode('functionTree', selectedIds);
-                document.getElementById('functionIds').value = selectedIds.join(',');
-            }
-        }
+function updateFunctionIds() {
+    var ids = Array.from(document.querySelectorAll('.permission-checkbox:checked')).map(function(input) {
+        return input.value;
     });
-});
+    document.getElementById('functionIds').value = ids.join(',');
+}
 
 function selectAll() {
-    layui.use(['tree'], function() {
-        var tree = layui.tree;
-        tree.checkNode('functionTree', {checked: true});
-        var checkedNodes = tree.getChecked('functionTree');
-        var checkedIds = checkedNodes.map(function(node) { return node.id; });
-        document.getElementById('functionIds').value = checkedIds.join(',');
+    document.querySelectorAll('.permission-checkbox').forEach(function(input) {
+        input.checked = true;
     });
+    updateFunctionIds();
 }
 
 function clearAll() {
-    layui.use(['tree'], function() {
-        var tree = layui.tree;
-        tree.checkNode('functionTree', {checked: false});
-        document.getElementById('functionIds').value = '';
+    document.querySelectorAll('.permission-checkbox').forEach(function(input) {
+        input.checked = false;
     });
+    updateFunctionIds();
 }
 
+document.querySelectorAll('.parent-checkbox').forEach(function(parent) {
+    parent.addEventListener('change', function() {
+        var parentId = this.getAttribute('data-node-id');
+        document.querySelectorAll('.child-checkbox[data-parent-id="' + parentId + '"]').forEach(function(child) {
+            child.checked = parent.checked;
+        });
+        updateFunctionIds();
+    });
+});
+
+document.querySelectorAll('.child-checkbox').forEach(function(child) {
+    child.addEventListener('change', function() {
+        var parentId = this.getAttribute('data-parent-id');
+        var siblings = Array.from(document.querySelectorAll('.child-checkbox[data-parent-id="' + parentId + '"]'));
+        var parent = document.querySelector('.parent-checkbox[data-node-id="' + parentId + '"]');
+        if (this.checked && parent) {
+            parent.checked = true;
+        }
+        if (parent && siblings.length > 0 && siblings.every(function(item) { return !item.checked; })) {
+            parent.checked = false;
+        }
+        updateFunctionIds();
+    });
+});
+
 function submitPermissions() {
+    updateFunctionIds();
     document.getElementById('permissionsForm').submit();
 }
+
+updateFunctionIds();
 </script>
 {% end %}

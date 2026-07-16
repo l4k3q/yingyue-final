@@ -3,9 +3,12 @@ import tornado.ioloop
 import tornado.web
 from tornado.httpserver import HTTPServer
 
-from app.controllers.auth import LoginHandler, LogoutHandler, RegisterHandler
+from app.controllers.auth import LoginHandler, LogoutHandler, RegisterHandler, FaceRegisterHandler, FaceLoginHandler
 from app.controllers.home import IndexHandler
-from app.controllers.chat import ChatWebSocketHandler, ConversationAPIHandler, DigitalEmployeeAPIHandler
+from app.controllers.chat import (
+    ChatWebSocketHandler, ConversationAPIHandler, DigitalEmployeeAPIHandler,
+    ModelListAPIHandler, TTSHandler
+)
 from app.controllers.report import ReportHandler
 from app.controllers.history import HistoryHandler
 from app.controllers.export import ExportHandler
@@ -14,9 +17,15 @@ from app.controllers.admin import (
     AdminUserHandler, AdminFunctionHandler, AdminMenuHandler,
     AdminRoleHandler, AdminRoleFunctionsHandler, AdminWatchHandler,
     AdminWatchSourceHandler, AdminDataHandler, AdminCollectionHandler,
-    AdminDigitalEmployeeHandler, AdminModelHandler, AdminModelTestHandler,
-    AdminDashboardHandler, AdminSentimentHandler,
+    AdminDigitalEmployeeHandler, AdminAPIInterfaceHandler,
+    AdminModelHandler, AdminModelTestHandler,
+    AdminDashboardHandler, AdminScreenHandler, AdminSentimentHandler,
     AdminSensitiveWordHandler, AdminSecurityAlertHandler,
+    AdminNoPermissionHandler, AdminSettingHandler
+)
+from app.controllers.screen_api import (
+    ScreenSourcesHandler, ScreenKeywordsHandler,
+    ScreenGeoHandler, ScreenRealtimeHandler
 )
 from app.controllers.sentiment_api import SentimentAPIHandler
 from app.models.db import init_db
@@ -47,6 +56,10 @@ def webapp():
         # ========== API 路由 ==========
         (r"/api/conversations", ConversationAPIHandler),
         (r"/api/digital_employees", DigitalEmployeeAPIHandler),
+        (r"/api/models", ModelListAPIHandler),
+        (r"/api/tts", TTSHandler),
+        (r"/api/face/register", FaceRegisterHandler),
+        (r"/api/face/login", FaceLoginHandler),
 
         # ========== WebSocket 路由 ==========
         (r"/ws/chat", ChatWebSocketHandler),
@@ -65,15 +78,25 @@ def webapp():
         (r"/admin/data", AdminDataHandler),
         (r"/admin/collection", AdminCollectionHandler),
         (r"/admin/digital_employee", AdminDigitalEmployeeHandler),
+        (r"/admin/api_interface", AdminAPIInterfaceHandler),
         (r"/admin/model", AdminModelHandler),
         (r"/admin/model/test", AdminModelTestHandler),
         (r"/admin/dashboard", AdminDashboardHandler),
+        (r"/admin/screen", AdminScreenHandler),
         (r"/admin/sentiment", AdminSentimentHandler),
         (r"/admin/sensitive-word", AdminSensitiveWordHandler),
         (r"/admin/security-alert", AdminSecurityAlertHandler),
 
         # ========== 舆情大屏 API 路由 ==========
         (r"/api/sentiment", SentimentAPIHandler),
+        (r"/admin/no_permission", AdminNoPermissionHandler),
+        (r"/admin/setting", AdminSettingHandler),
+
+        # ========== 大屏统计 API 路由 ==========
+        (r"/api/screen/sources", ScreenSourcesHandler),
+        (r"/api/screen/keywords", ScreenKeywordsHandler),
+        (r"/api/screen/geo", ScreenGeoHandler),
+        (r"/api/screen/realtime", ScreenRealtimeHandler),
     ],
         **settings
     )

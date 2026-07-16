@@ -1,0 +1,293 @@
+/* 瞭望采集数智可视化大屏 - 嵌入后台容器样式 */
+
+/* 覆盖 base.html 在当前页的边距，让大屏铺满内容区 */
+.layui-body .admin-content {
+    padding: 0 !important;
+}
+
+#screen-app {
+    width: 100%;
+    height: calc(100vh - 60px);
+    min-height: 600px;
+    overflow: hidden;
+    background: #0b0f1e;
+    color: #d3d6dd;
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+#screen-app [v-cloak] {
+    display: none;
+}
+
+.screen-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+/* 顶部标题 */
+.screen-header {
+    flex: 0 0 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    margin-bottom: 10px;
+}
+
+.screen-header .decoration-left,
+.screen-header .decoration-right {
+    width: 30%;
+    height: 100%;
+}
+
+.screen-header .title {
+    width: 40%;
+    text-align: center;
+    position: relative;
+}
+
+.screen-header h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: bold;
+    letter-spacing: 4px;
+    background: linear-gradient(180deg, #ffffff 0%, #8ec5fc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 20px rgba(86, 138, 234, 0.5);
+}
+
+.screen-header .title-bottom {
+    position: absolute;
+    left: 50%;
+    bottom: -8px;
+    transform: translateX(-50%);
+    width: 60%;
+    height: 6px;
+}
+
+/* 主体三栏 */
+.screen-main {
+    flex: 2;
+    display: flex;
+    gap: 12px;
+    min-height: 0;
+    margin-bottom: 10px;
+}
+
+.screen-left,
+.screen-right {
+    flex: 0 0 24%;
+    min-width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.screen-center {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+}
+
+/* 底部日志栏 */
+.screen-bottom {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
+
+/* 面板公共样式 */
+.screen-panel {
+    width: 100%;
+    height: 100%;
+    padding: 12px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.panel-title {
+    flex: 0 0 24px;
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    font-weight: bold;
+    color: #ffffff;
+    padding-left: 12px;
+    position: relative;
+}
+
+.panel-title::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 16px;
+    background: linear-gradient(180deg, #568aea 0%, #50e3c2 100%);
+    border-radius: 2px;
+}
+
+.chart {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+}
+
+/* 3D 地球容器星空背景 */
+.screen-center .chart {
+    background:
+        radial-gradient(ellipse at bottom, rgba(27, 39, 53, 0.95) 0%, rgba(9, 10, 15, 0.98) 100%),
+        radial-gradient(1px 1px at 20px 30px, rgba(255, 255, 255, 0.8), transparent),
+        radial-gradient(1px 1px at 40px 70px, rgba(255, 255, 255, 0.6), transparent),
+        radial-gradient(1px 1px at 50px 160px, rgba(255, 255, 255, 0.7), transparent),
+        radial-gradient(1px 1px at 90px 40px, rgba(255, 255, 255, 0.5), transparent),
+        radial-gradient(1px 1px at 130px 80px, rgba(255, 255, 255, 0.7), transparent),
+        radial-gradient(1px 1px at 160px 120px, rgba(255, 255, 255, 0.6), transparent);
+    background-size: 100% 100%, 200px 200px, 220px 220px, 250px 250px, 180px 180px, 240px 240px, 160px 160px;
+    border-radius: 4px;
+}
+
+/* 日志滚动 */
+.log-scroll {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.log-list {
+    position: absolute;
+    width: 100%;
+    animation: scrollUp 20s linear infinite;
+}
+
+.log-list:hover {
+    animation-play-state: paused;
+}
+
+.log-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(86, 138, 234, 0.15);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.log-time {
+    color: #8ec5fc;
+    width: 150px;
+    flex-shrink: 0;
+}
+
+.log-source {
+    color: #50e3c2;
+    width: 100px;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.log-text {
+    color: #d3d6dd;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.log-status-success {
+    color: #50e3c2;
+}
+
+.log-status-fail {
+    color: #ff6b6b;
+}
+
+@keyframes scrollUp {
+    0% {
+        transform: translateY(100%);
+    }
+    100% {
+        transform: translateY(-100%);
+    }
+}
+
+/* 顶部统计卡片 */
+.stats-bar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.stat-card {
+    flex: 1;
+    background: rgba(86, 138, 234, 0.08);
+    border: 1px solid rgba(86, 138, 234, 0.25);
+    border-radius: 4px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: #8ec5fc;
+    margin-top: 4px;
+}
+
+.stat-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(86, 138, 234, 0.15);
+    color: #568aea;
+    font-size: 18px;
+}
+
+/* DataV 容器自适应修复 */
+.screen-panel .border-box-content,
+.screen-panel > div[data-v-] {
+    width: 100%;
+    height: 100%;
+}
+
+/* 确保 DataV 边框盒填满 flex 父容器 */
+.screen-left > dv-border-box-12,
+.screen-center > dv-border-box-13,
+.screen-bottom > dv-border-box-13,
+.screen-right > dv-border-box-12 {
+    display: block;
+    width: 100%;
+    height: 100%;
+    flex: 1;
+}
+
+/* 响应式：小屏幕下改为单列堆叠 */
+@media (max-width: 1200px) {
+    .screen-main {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .screen-left,
+    .screen-right,
+    .screen-center {
+        flex: 0 0 auto;
+        height: 360px;
+        min-width: 100%;
+    }
+}
