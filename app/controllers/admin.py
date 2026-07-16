@@ -8,7 +8,7 @@ from app.models.user import UserRepository
 from app.models.role import RoleRepository
 from app.models.function import FunctionRepository
 from app.models.watch import WatchSourceRepository, WatchRecordRepository, WatchCollector
-from app.models.model import AIModelRepository, AIModelService
+from app.models.model import AIModelRepository, AIModelService, mask_api_key
 from app.models.warehouse import DataWarehouseRepository, DeepCollectTaskRepository, DeepCollectService
 from app.models.digital_employee import DigitalEmployeeRepository, DigitalEmployeeService
 from app.models.setting import SystemSettingRepository
@@ -654,6 +654,8 @@ class AdminModelHandler(AdminBaseHandler):
         page = int(self.get_query_argument("page", 1))
         keyword = self.get_query_argument("keyword", "")
         models, total = AIModelRepository.get_models(page=page, page_size=12, keyword=keyword)
+        for model in models:
+            model["api_key"] = mask_api_key(model["api_key"])
         token_stats = AIModelRepository.get_token_stats()
         self.render("admin/model.html", title="模型引擎", models=models, total=total, page=page, keyword=keyword, token_stats=token_stats)
 
@@ -663,6 +665,7 @@ class AdminModelHandler(AdminBaseHandler):
             model_id = int(self.get_body_argument("id", 0))
             model = AIModelRepository.get_model_by_id(model_id)
             if model:
+                model["api_key"] = mask_api_key(model["api_key"])
                 self.write(json.dumps(model))
             else:
                 self.write(json.dumps({"error": "模型不存在"}))
@@ -689,6 +692,10 @@ class AdminModelHandler(AdminBaseHandler):
             name = self.get_body_argument("name", "")
             model_id_str = self.get_body_argument("model_id", "")
             api_key = self.get_body_argument("api_key", "")
+            if "******" in api_key:
+                original_model = AIModelRepository.get_model_by_id(model_id)
+                if original_model:
+                    api_key = original_model["api_key"]
             base_url = self.get_body_argument("base_url", "")
             temperature = float(self.get_body_argument("temperature", 0.7))
             max_tokens = int(self.get_body_argument("max_tokens", 4096))

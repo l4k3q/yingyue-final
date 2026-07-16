@@ -33,6 +33,10 @@ def init_db():
             )
             """
         )
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN face_embedding TEXT")
+        except sqlite3.OperationalError:
+            pass
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS admins(
