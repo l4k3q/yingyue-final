@@ -63,10 +63,10 @@
                     </td>
                     <td>{{ role["created_at"] }}</td>
                     <td>
+                        {% if role["is_default"] == 0 %}
                         <button class="layui-btn layui-btn-xs" onclick="showPermissions({{ role['id'] }})">
                             <i class="layui-icon layui-icon-set"></i> 权限配置
                         </button>
-                        {% if role["is_default"] == 0 %}
                         <button class="layui-btn layui-btn-xs" onclick="showEditModal({{ role['id'] }}, '{{ role['name'] }}', '{{ role['description'] if role['description'] else '' }}')">
                             <i class="layui-icon layui-icon-edit"></i> 修改
                         </button>

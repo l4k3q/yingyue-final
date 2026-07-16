@@ -7,6 +7,94 @@ import urllib.parse
 from app.models.db import get_connection
 
 
+class APIInterfaceRepository:
+    @staticmethod
+    def get_interfaces(page: int = 1, page_size: int = 20, keyword: str = ""):
+        offset = (page - 1) * page_size
+        with get_connection() as conn:
+            conditions = []
+            params = []
+            if keyword:
+                conditions.append("(name LIKE ? OR url LIKE ? OR description LIKE ?)")
+                params.extend([f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"])
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
+            
+            cursor = conn.execute(
+                f"SELECT COUNT(*) FROM api_interfaces WHERE {where_clause}",
+                params
+            )
+            total = cursor.fetchone()[0]
+            
+            cursor = conn.execute(
+                f"""SELECT * FROM api_interfaces WHERE {where_clause} 
+                ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+                params + [page_size, offset]
+            )
+            rows = cursor.fetchall()
+        return [dict(row) for row in rows], total
+
+    @staticmethod
+    def get_interface_by_id(interface_id: int):
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM api_interfaces WHERE id=?",
+                (interface_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    @staticmethod
+    def get_all_active_interfaces():
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT id, name FROM api_interfaces WHERE status=1 ORDER BY name"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    @staticmethod
+    def create_interface(name: str, url: str, method: str = "GET", headers: str = "{}",
+                         params: str = "{}", body: str = "{}", response_mapping: str = "{}",
+                         description: str = "", status: int = 1) -> bool:
+        try:
+            with get_connection() as conn:
+                conn.execute(
+                    """INSERT INTO api_interfaces 
+                    (name, url, method, headers, params, body, response_mapping, description, status)
+                    VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (name, url, method, headers, params, body, response_mapping, description, status)
+                )
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    @staticmethod
+    def update_interface(interface_id: int, name: str, url: str, method: str = "GET",
+                         headers: str = "{}", params: str = "{}", body: str = "{}",
+                         response_mapping: str = "{}", description: str = "", status: int = 1) -> bool:
+        try:
+            with get_connection() as conn:
+                conn.execute(
+                    """UPDATE api_interfaces SET name=?, url=?, method=?, headers=?, params=?, 
+                    body=?, response_mapping=?, description=?, status=?,
+                    updated_at=datetime('now','localtime') WHERE id=?""",
+                    (name, url, method, headers, params, body, response_mapping, description, status, interface_id)
+                )
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    @staticmethod
+    def delete_interface(interface_id: int) -> bool:
+        with get_connection() as conn:
+            conn.execute("UPDATE api_interfaces SET status=2 WHERE id=?", (interface_id,))
+        return True
+
+    @staticmethod
+    def toggle_interface_status(interface_id: int, status: int) -> bool:
+        with get_connection() as conn:
+            conn.execute("UPDATE api_interfaces SET status=? WHERE id=?", (status, interface_id))
+        return True
+
+
 class DigitalEmployeeRepository:
     @staticmethod
     def get_employees(page: int = 1, page_size: int = 20, keyword: str = "", type: int = 0):
@@ -68,18 +156,18 @@ class DigitalEmployeeRepository:
                         prompt: str = "", skills: str = "", use_crawl4ai: int = 0,
                         api_url: str = "", api_method: str = "GET", api_headers: str = "",
                         api_params: str = "", api_body: str = "", description: str = "",
-                        md_files_path: str = "") -> bool:
+                        md_files_path: str = "", api_interface_id: int = 0, card_template: str = "") -> bool:
         try:
             with get_connection() as conn:
                 conn.execute(
                     """INSERT INTO digital_employees 
                     (name, code_name, type, model_id, prompt, skills, use_crawl4ai,
                      api_url, api_method, api_headers, api_params, api_body, description,
-                     md_files_path)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                     md_files_path, api_interface_id, card_template)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (name, code_name, type, model_id, prompt, skills, use_crawl4ai,
                      api_url, api_method, api_headers, api_params, api_body, description,
-                     md_files_path)
+                     md_files_path, api_interface_id, card_template)
                 )
             return True
         except sqlite3.IntegrityError:
@@ -90,17 +178,18 @@ class DigitalEmployeeRepository:
                         model_id: int = 0, prompt: str = "", skills: str = "",
                         use_crawl4ai: int = 0, api_url: str = "", api_method: str = "GET",
                         api_headers: str = "", api_params: str = "", api_body: str = "",
-                        description: str = "", status: int = 1, md_files_path: str = "") -> bool:
+                        description: str = "", status: int = 1, md_files_path: str = "",
+                        api_interface_id: int = 0, card_template: str = "") -> bool:
         try:
             with get_connection() as conn:
                 conn.execute(
                     """UPDATE digital_employees SET name=?, code_name=?, type=?, model_id=?, 
                     prompt=?, skills=?, use_crawl4ai=?, api_url=?, api_method=?, 
                     api_headers=?, api_params=?, api_body=?, description=?, status=?,
-                    md_files_path=?, updated_at=datetime('now','localtime') WHERE id=?""",
+                    md_files_path=?, api_interface_id=?, card_template=?, updated_at=datetime('now','localtime') WHERE id=?""",
                     (name, code_name, type, model_id, prompt, skills, use_crawl4ai,
                      api_url, api_method, api_headers, api_params, api_body, description, status,
-                     md_files_path, employee_id)
+                     md_files_path, api_interface_id, card_template, employee_id)
                 )
             return True
         except sqlite3.IntegrityError:
@@ -194,31 +283,81 @@ class DigitalEmployeeService:
                     "completion_tokens": result.get("usage", {}).get("completion_tokens", 0),
                     "crawled": True if crawled_content else False
                 }
+            # 模型无响应数据，但如果有crawl4ai采集的内容，则返回该内容
+            if crawled_content:
+                return {
+                    "success": True,
+                    "content": crawled_content,
+                    "type": "crawl4ai_fallback",
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "crawled": True,
+                    "warning": "模型无响应，使用crawl4ai采集的原始内容"
+                }
             return {"success": False, "error": "模型无响应数据"}
         except Exception as e:
+            # 模型调用异常，但如果有crawl4ai采集的内容，则返回该内容
+            if crawled_content:
+                return {
+                    "success": True,
+                    "content": crawled_content,
+                    "type": "crawl4ai_fallback",
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "crawled": True,
+                    "warning": f"模型调用异常({str(e)})，使用crawl4ai采集的原始内容"
+                }
             return {"success": False, "error": str(e)}
 
     @staticmethod
     def _crawl_with_crawl4ai(url: str) -> str:
         try:
-            from crawl4ai import AsyncWebCrawler
+            from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
             import asyncio
-            import nest_asyncio
-            
-            nest_asyncio.apply()
-            crawler = AsyncWebCrawler()
-            result = asyncio.run(crawler.arun(url=url))
-            
+            import threading
+
+            result_holder = [None]
+
+            def _run():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    browser_config = BrowserConfig(headless=True)
+                    crawler_config = CrawlerRunConfig()
+                    crawler = AsyncWebCrawler(config=browser_config)
+                    result_holder[0] = loop.run_until_complete(crawler.arun(url=url, config=crawler_config))
+                finally:
+                    loop.close()
+
+            t = threading.Thread(target=_run)
+            t.start()
+            t.join(timeout=60)
+
+            result = result_holder[0]
+            if result is None:
+                return "crawl4ai采集超时或失败"
+
             if result.success:
                 content = ""
                 if hasattr(result, 'markdown') and result.markdown:
                     content = result.markdown
                 elif hasattr(result, 'html') and result.html:
                     content = result.html
-                
+
+                # 确保内容是UTF-8编码的字符串
+                if isinstance(content, bytes):
+                    try:
+                        content = content.decode('utf-8', errors='ignore')
+                    except:
+                        content = content.decode('gbk', errors='ignore')
+
+                # 清理乱码字符
+                content = content.replace('\ufffd', '')  # 替换替换字符
+                content = content.replace('\x00', '')    # 移除空字符
+
                 if len(content) > 5000:
                     content = content[:5000] + "\n\n[内容过长，已截断]"
-                
+
                 return content
             else:
                 error_msg = ""
@@ -254,6 +393,21 @@ class DigitalEmployeeService:
         api_headers = employee.get("api_headers", "")
         api_params = employee.get("api_params", "")
         api_body = employee.get("api_body", "")
+        api_interface_id = employee.get("api_interface_id", 0)
+        
+        if api_interface_id > 0:
+            interface = APIInterfaceRepository.get_interface_by_id(api_interface_id)
+            if interface:
+                if not api_url:
+                    api_url = interface.get("url", "")
+                if api_method == "GET":
+                    api_method = interface.get("method", "GET").upper()
+                if not api_headers:
+                    api_headers = interface.get("headers", "")
+                if not api_params:
+                    api_params = interface.get("params", "")
+                if not api_body:
+                    api_body = interface.get("body", "")
         
         if not api_url:
             return {"success": False, "error": "API URL未配置"}
@@ -372,6 +526,75 @@ class DigitalEmployeeService:
                                 },
                                 "type": "api",
                                 "raw": response.text
+                            }
+                        else:
+                            # Empty results -- retry with random English search terms
+                            retry_terms = ["top hits", "popular songs", "best music",
+                                           "hot tracks", "new releases", "summer hits",
+                                           "party music", "chill songs", "rock classics"]
+                            for attempt in range(3):
+                                retry_term = random.choice(retry_terms)
+                                query_params["term"] = retry_term
+                                url = api_url
+                                if query_params:
+                                    if "?" in url:
+                                        retry_url = url + "&" + urllib.parse.urlencode(query_params, encoding='utf-8')
+                                    else:
+                                        retry_url = url + "?" + urllib.parse.urlencode(query_params, encoding='utf-8')
+                                try:
+                                    retry_resp = requests.get(retry_url, headers=headers, timeout=10, verify=False)
+                                    retry_data = retry_resp.json()
+                                    retry_results = retry_data.get("results", [])
+                                    if retry_results:
+                                        song = random.choice(retry_results)
+                                        track_name = song.get("trackName", "未知歌曲")
+                                        artist_name = song.get("artistName", "未知歌手")
+                                        collection_name = song.get("collectionName", "未知专辑")
+                                        artwork_url = song.get("artworkUrl100", "")
+                                        artwork_url = artwork_url.replace("100x100bb", "300x300bb") if artwork_url else ""
+                                        track_url = song.get("trackViewUrl", "")
+                                        genre = song.get("primaryGenreName", "未知风格")
+                                        track_time = song.get("trackTimeMillis", 0)
+                                        minutes = track_time // 60000
+                                        seconds = (track_time % 60000) // 1000
+                                        duration = f"{minutes}:{seconds:02d}"
+                                        price = song.get("trackPrice", 0)
+                                        currency = song.get("currency", "USD")
+                                        return {
+                                            "success": True,
+                                            "content": {
+                                                "track_name": track_name,
+                                                "artist_name": artist_name,
+                                                "collection_name": collection_name,
+                                                "artwork_url": artwork_url,
+                                                "preview_url": song.get("previewUrl", ""),
+                                                "track_url": track_url,
+                                                "genre": genre,
+                                                "duration": duration,
+                                                "price": f"{price} {currency}" if price else "免费"
+                                            },
+                                            "type": "api",
+                                            "raw": retry_resp.text
+                                        }
+                                except Exception:
+                                    continue
+
+                            # All retries failed -- return fallback
+                            return {
+                                "success": True,
+                                "content": {
+                                    "track_name": "暂无推荐歌曲",
+                                    "artist_name": "请稍后再试",
+                                    "collection_name": "音乐服务暂时不可用",
+                                    "artwork_url": "",
+                                    "preview_url": "",
+                                    "track_url": "#",
+                                    "genre": "未知",
+                                    "duration": "0:00",
+                                    "price": "免费"
+                                },
+                                "type": "api",
+                                "raw": ""
                             }
                     except (IndexError, KeyError):
                         pass

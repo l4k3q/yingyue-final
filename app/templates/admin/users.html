@@ -7,7 +7,7 @@
             <button class="layui-btn layui-btn-primary" onclick="showSearch()">
                 <i class="layui-icon layui-icon-search"></i> 搜索
             </button>
-            {% if is_admin %}
+            {% if can_manage_users %}
             <button class="layui-btn" onclick="showAddModal()">
                 <i class="layui-icon layui-icon-add-circle"></i> 新增用户
             </button>
@@ -57,7 +57,7 @@
                     </td>
                     <td>{{ user["created_at"] }}</td>
                     <td>
-                        {% if is_admin and user['username'] != 'admin' %}
+                        {% if can_manage_users and user['username'] != 'admin' %}
                         <button class="layui-btn layui-btn-xs" onclick="showEditModal({{ user['id'] }}, '{{ user['username'] }}', {{ user['role_id'] }})">
                             <i class="layui-icon layui-icon-edit"></i> 修改
                         </button>
@@ -69,9 +69,11 @@
                             <i class="layui-icon layui-icon-delete"></i> 删除
                         </button>
                         {% elif user['username'] == 'admin' %}
+                        {% if current_admin == 'admin' %}
                         <button class="layui-btn layui-btn-xs layui-btn-normal" onclick="showChangePwdModal({{ user['id'] }})">
                             <i class="layui-icon layui-icon-set"></i> 修改密码
                         </button>
+                        {% end %}
                         <span class="layui-badge">超级管理员</span>
                         {% else %}
                         <span class="layui-badge layui-bg-gray">只读</span>

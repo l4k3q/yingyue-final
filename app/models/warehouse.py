@@ -250,10 +250,25 @@ class DeepCollectService:
                     
                     return {"success": True, "message": "深度采集完成", "task_id": task_id}
                 else:
+                    # 数字员工采集失败，尝试使用crawl4ai作为fallback
+                    DeepCollectTaskRepository.add_log(task_id, f"数字员工采集失败，尝试使用crawl4ai作为fallback: {result.get('error', '')}")
                     DeepCollectTaskRepository.update_task_status(
-                        task_id, 3, 0, "失败", f"采集失败: {result.get('error', '未知错误')}", ""
+                        task_id, 1, 60, "Fallback采集", "数字员工采集失败，使用crawl4ai采集...", ""
                     )
-                    return {"success": False, "error": result.get("error", "采集失败"), "task_id": task_id}
+                    
+                    fallback_result = DeepCollectService._default_collect(record, task_id)
+                    
+                    if fallback_result.get("success", False):
+                        DeepCollectTaskRepository.update_task_status(
+                            task_id, 2, 100, "完成", "深度采集完成(fallback方式)", json.dumps(fallback_result)
+                        )
+                        DataWarehouseRepository.mark_deep_collected(record_id)
+                        return {"success": True, "message": "深度采集完成(fallback方式)", "task_id": task_id}
+                    else:
+                        DeepCollectTaskRepository.update_task_status(
+                            task_id, 3, 0, "失败", f"采集失败: {fallback_result.get('error', '未知错误')}", ""
+                        )
+                        return {"success": False, "error": fallback_result.get("error", "采集失败"), "task_id": task_id}
             else:
                 DeepCollectTaskRepository.update_task_status(
                     task_id, 1, 50, "默认采集", "未找到采集专员，使用默认采集方式...", ""
@@ -318,29 +333,58 @@ class DeepCollectService:
         
         try:
             DeepCollectTaskRepository.add_log(task_id, f"使用crawl4ai开始采集URL: {url}")
-            
-            from crawl4ai import AsyncWebCrawler
+
+            from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
             import asyncio
-            import nest_asyncio
-            
-            nest_asyncio.apply()
-            crawler = AsyncWebCrawler()
-            result = asyncio.run(crawler.arun(url=url))
-            
+            import threading
+
+            result_holder = [None]
+
+            def _run():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    browser_config = BrowserConfig(headless=True)
+                    crawler_config = CrawlerRunConfig()
+                    crawler = AsyncWebCrawler(config=browser_config)
+                    result_holder[0] = loop.run_until_complete(crawler.arun(url=url, config=crawler_config))
+                finally:
+                    loop.close()
+
+            t = threading.Thread(target=_run)
+            t.start()
+            t.join(timeout=60)
+
+            result = result_holder[0]
+            if result is None:
+                DeepCollectTaskRepository.add_log(task_id, "crawl4ai采集超时或失败")
+                return {"success": False, "error": "crawl4ai采集超时或失败"}
+
             if result.success:
                 content = ""
                 if hasattr(result, 'markdown') and result.markdown:
                     content = result.markdown
                 elif hasattr(result, 'html') and result.html:
                     content = result.html
-                
+
+                # 确保内容是UTF-8编码的字符串
+                if isinstance(content, bytes):
+                    try:
+                        content = content.decode('utf-8', errors='ignore')
+                    except:
+                        content = content.decode('gbk', errors='ignore')
+
+                # 清理乱码字符
+                content = content.replace('\ufffd', '')  # 替换替换字符
+                content = content.replace('\x00', '')    # 移除空字符
+
                 title = record.get("title", "")
                 metadata = {}
                 if hasattr(result, 'metadata') and result.metadata:
                     metadata = result.metadata
                     if metadata.get("title"):
                         title = metadata["title"]
-                
+
                 DeepCollectTaskRepository.add_log(task_id, f"crawl4ai采集完成，内容长度: {len(content)}")
                 
                 return {
