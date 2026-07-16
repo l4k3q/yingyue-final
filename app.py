@@ -17,7 +17,8 @@ from app.controllers.admin import (
     AdminUserHandler, AdminFunctionHandler, AdminMenuHandler,
     AdminRoleHandler, AdminRoleFunctionsHandler, AdminWatchHandler,
     AdminWatchSourceHandler, AdminDataHandler, AdminCollectionHandler,
-    AdminDigitalEmployeeHandler, AdminModelHandler, AdminModelTestHandler,
+    AdminDigitalEmployeeHandler, AdminAPIInterfaceHandler,
+    AdminModelHandler, AdminModelTestHandler,
     AdminDashboardHandler, AdminScreenHandler, AdminSentimentHandler,
     AdminNoPermissionHandler, AdminSettingHandler
 )
@@ -75,6 +76,7 @@ def webapp():
         (r"/admin/data", AdminDataHandler),
         (r"/admin/collection", AdminCollectionHandler),
         (r"/admin/digital_employee", AdminDigitalEmployeeHandler),
+        (r"/admin/api_interface", AdminAPIInterfaceHandler),
         (r"/admin/model", AdminModelHandler),
         (r"/admin/model/test", AdminModelTestHandler),
         (r"/admin/dashboard", AdminDashboardHandler),

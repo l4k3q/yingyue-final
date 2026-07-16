@@ -191,6 +191,28 @@ def init_db():
         except sqlite3.OperationalError:
             pass
         try:
+            conn.execute("ALTER TABLE digital_employees ADD COLUMN api_interface_id INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS api_interfaces(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                url TEXT NOT NULL,
+                method TEXT DEFAULT 'GET',
+                headers TEXT DEFAULT '{}',
+                params TEXT DEFAULT '{}',
+                body TEXT DEFAULT '{}',
+                response_mapping TEXT DEFAULT '{}',
+                description TEXT,
+                status INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
+        try:
             conn.execute("ALTER TABLE watch_sources ADD COLUMN collect_config TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
@@ -479,4 +501,15 @@ def init_db():
                 """INSERT INTO digital_employees (name, code_name, type, model_id, prompt, description) 
                 VALUES (?,?,?,?,?,?)""",
                 ("采集专员", "collector", 1, 1, "你是采集专员，负责网页内容深度采集。URL: {url}", "网页内容深度采集")
+            )
+        
+        cursor = conn.execute("SELECT COUNT(*) FROM api_interfaces")
+        count = cursor.fetchone()[0]
+        if count == 0:
+            conn.execute(
+                """INSERT INTO api_interfaces (name, url, method, params, response_mapping, description, status) 
+                VALUES (?,?,?,?,?,?,?)""",
+                ("天气查询", "https://wttr.in/{city}?format=j1", "GET", '{"city": "Beijing"}', 
+                 '{"location": "nearest_area[0].areaName[0].value", "temp": "current_condition[0].temp_C", "condition": "current_condition[0].weatherDesc[0].value"}', 
+                 "获取指定城市天气信息", 1)
             )
