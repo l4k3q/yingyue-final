@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }}</title>
+    <title>{% block title %}{{ title }}{% end %}</title>
     <link rel="stylesheet" type="text/css" href="{{ static_url('dist/bootstrap/css/bootstrap.min.css') }}">
     <link rel="stylesheet" type="text/css" href="{{ static_url('dist/layui/css/layui.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" type="text/css" href="{{ static_url('css/base.css') }}">
+    {% block extra_css %}{% end %}
     <style>
         .layui-layout-admin .layui-header {
             background: linear-gradient(135deg, #165DFF 0%, #0E42D2 100%);
@@ -154,5 +156,6 @@
         })();
     </script>
     {% block script %}{% end %}
+    {% block extra_js %}{% end %}
 </body>
 </html>

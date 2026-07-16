@@ -7,7 +7,7 @@ from app.controllers.auth import LoginHandler, LogoutHandler, RegisterHandler, F
 from app.controllers.home import IndexHandler
 from app.controllers.chat import (
     ChatWebSocketHandler, ConversationAPIHandler, DigitalEmployeeAPIHandler,
-    ModelListAPIHandler, TTSHandler
+    MessagesByConversationAPIHandler, ModelListAPIHandler, TTSHandler
 )
 from app.controllers.report import ReportHandler
 from app.controllers.history import HistoryHandler
@@ -21,7 +21,8 @@ from app.controllers.admin import (
     AdminModelHandler, AdminModelTestHandler,
     AdminDashboardHandler, AdminScreenHandler, AdminSentimentHandler,
     AdminSensitiveWordHandler, AdminSecurityAlertHandler,
-    AdminNoPermissionHandler, AdminSettingHandler
+    AdminNoPermissionHandler, AdminSettingHandler,
+    AdminConversationHandler, AdminMessageHandler, AdminSkillHandler
 )
 from app.controllers.screen_api import (
     ScreenSourcesHandler, ScreenKeywordsHandler,
@@ -56,6 +57,7 @@ def webapp():
         # ========== API 路由 ==========
         (r"/api/conversations", ConversationAPIHandler),
         (r"/api/digital_employees", DigitalEmployeeAPIHandler),
+        (r"/api/messages/by_conversation", MessagesByConversationAPIHandler),
         (r"/api/models", ModelListAPIHandler),
         (r"/api/tts", TTSHandler),
         (r"/api/face/register", FaceRegisterHandler),
@@ -91,6 +93,9 @@ def webapp():
         (r"/api/sentiment", SentimentAPIHandler),
         (r"/admin/no_permission", AdminNoPermissionHandler),
         (r"/admin/setting", AdminSettingHandler),
+        (r"/admin/conversations", AdminConversationHandler),
+        (r"/admin/messages", AdminMessageHandler),
+        (r"/admin/skills", AdminSkillHandler),
 
         # ========== 大屏统计 API 路由 ==========
         (r"/api/screen/sources", ScreenSourcesHandler),

@@ -247,6 +247,9 @@ def init_db():
                 user_id INTEGER NOT NULL,
                 title TEXT DEFAULT '',
                 messages TEXT DEFAULT '',
+                business_type INTEGER NOT NULL DEFAULT 0,
+                employee_id INTEGER DEFAULT 0,
+                archive_status INTEGER NOT NULL DEFAULT 0,
                 status INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
@@ -254,6 +257,94 @@ def init_db():
             )
             """
         )
+        # 为 conversations 表新增字段（兼容已有数据库）
+        for col_sql in [
+            "ALTER TABLE conversations ADD COLUMN business_type INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE conversations ADD COLUMN employee_id INTEGER DEFAULT 0",
+            "ALTER TABLE conversations ADD COLUMN archive_status INTEGER NOT NULL DEFAULT 0",
+        ]:
+            try:
+                conn.execute(col_sql)
+            except sqlite3.OperationalError:
+                pass
+        # 创建独立的 messages 表
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS messages(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                msg_type TEXT NOT NULL DEFAULT 'text',
+                msg_index INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        # 幂等迁移旧 conversations.messages JSON，避免启用独立消息表后丢失历史上下文。
+        import json
+        legacy_conversations = conn.execute(
+            "SELECT id, user_id, messages FROM conversations WHERE messages IS NOT NULL AND messages != '' AND messages != '[]'"
+        ).fetchall()
+        for conversation in legacy_conversations:
+            existing_count = conn.execute(
+                "SELECT COUNT(*) FROM messages WHERE conversation_id=?",
+                (conversation["id"],),
+            ).fetchone()[0]
+            if existing_count:
+                continue
+            try:
+                legacy_messages = json.loads(conversation["messages"])
+            except (json.JSONDecodeError, TypeError):
+                legacy_messages = []
+            for index, message in enumerate(legacy_messages, start=1):
+                conn.execute(
+                    """INSERT INTO messages
+                       (conversation_id, user_id, role, content, msg_type, msg_index)
+                       VALUES (?,?,?,?,?,?)""",
+                    (
+                        conversation["id"], conversation["user_id"],
+                        message.get("role", "assistant"), message.get("content", ""),
+                        message.get("type", "text"), message.get("index", index),
+                    ),
+                )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS skills(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                category INTEGER NOT NULL DEFAULT 1,
+                status INTEGER NOT NULL DEFAULT 1,
+                description TEXT DEFAULT '',
+                config_json TEXT DEFAULT '{}',
+                enhancement_config TEXT DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS employee_skills(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                employee_id INTEGER NOT NULL,
+                skill_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                UNIQUE(employee_id, skill_id),
+                FOREIGN KEY (employee_id) REFERENCES digital_employees(id),
+                FOREIGN KEY (skill_id) REFERENCES skills(id)
+            )
+            """
+        )
+        # 为 skills 表新增字段（兼容已有数据库）
+        try:
+            conn.execute("ALTER TABLE skills ADD COLUMN enhancement_config TEXT DEFAULT '{}'")
+        except sqlite3.OperationalError:
+            pass
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS sensitive_words(
@@ -364,12 +455,16 @@ def init_db():
         sensitive_word_id = ensure_function("敏感词管理", "layui-icon-password", "/admin/sensitive-word", sentiment_id, 1)
         security_alert_id = ensure_function("预警记录", "layui-icon-notice", "/admin/security-alert", sentiment_id, 2)
         setting_id = ensure_function("系统设置", "layui-icon-set", "/admin/setting", 0, 8)
+        conversation_admin_id = ensure_function("会话管理", "layui-icon-dialogue", "/admin/conversations", 0, 9)
+        message_admin_id = ensure_function("对话管理", "layui-icon-reply-fill", "/admin/messages", 0, 10)
+        skill_admin_id = ensure_function("技能管理", "layui-icon-util", "/admin/skills", 0, 11)
 
         all_admin_functions = [
             dashboard_id, user_root_id, user_list_id, permission_root_id, function_id, menu_id, role_id,
             data_root_id, watch_id, data_id, collection_id, ai_root_id, employee_id, model_id,
             api_interface_id, big_screen_id, sentiment_id, sensitive_word_id,
-            security_alert_id, setting_id
+            security_alert_id, setting_id, conversation_admin_id,
+            message_admin_id, skill_admin_id
         ]
         for function_id_value in all_admin_functions:
             ensure_role_function(admin_role_id, function_id_value)
@@ -511,6 +606,26 @@ def init_db():
         if cursor.fetchone()[0] == 0:
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('系统设置', 'icon-set', '/admin/setting', 0, 8)")
             func_id = conn.execute("SELECT id FROM functions WHERE url='/admin/setting'").fetchone()[0]
+            conn.execute("INSERT OR IGNORE INTO role_functions (role_id, function_id) VALUES (2, ?)", (func_id,))
+
+        # 确保会话管理和对话管理菜单存在
+        cursor = conn.execute("SELECT COUNT(*) FROM functions WHERE url='/admin/conversations'")
+        if cursor.fetchone()[0] == 0:
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('会话管理', 'icon-chat', '/admin/conversations', 0, 9)")
+            func_id = conn.execute("SELECT id FROM functions WHERE url='/admin/conversations'").fetchone()[0]
+            conn.execute("INSERT OR IGNORE INTO role_functions (role_id, function_id) VALUES (2, ?)", (func_id,))
+
+        cursor = conn.execute("SELECT COUNT(*) FROM functions WHERE url='/admin/messages'")
+        if cursor.fetchone()[0] == 0:
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('对话管理', 'icon-message', '/admin/messages', 0, 10)")
+            func_id = conn.execute("SELECT id FROM functions WHERE url='/admin/messages'").fetchone()[0]
+            conn.execute("INSERT OR IGNORE INTO role_functions (role_id, function_id) VALUES (2, ?)", (func_id,))
+
+        # 确保技能管理菜单存在
+        cursor = conn.execute("SELECT COUNT(*) FROM functions WHERE url='/admin/skills'")
+        if cursor.fetchone()[0] == 0:
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('技能管理', 'icon-code', '/admin/skills', 0, 11)")
+            func_id = conn.execute("SELECT id FROM functions WHERE url='/admin/skills'").fetchone()[0]
             conn.execute("INSERT OR IGNORE INTO role_functions (role_id, function_id) VALUES (2, ?)", (func_id,))
 
         cursor = conn.execute("SELECT COUNT(*) FROM watch_sources")
@@ -658,6 +773,23 @@ def init_db():
                 ("采集专员", "collector", 1, 1, "你是采集专员，负责网页内容深度采集。URL: {url}", "网页内容深度采集")
             )
 
+        # 使用当前事务初始化默认技能，避免新数据库中嵌套连接看不到未提交的 skills 表。
+        try:
+            from app.models.skills_enhancement import DEFAULT_SKILLS
+            skill_count = conn.execute("SELECT COUNT(*) FROM skills").fetchone()[0]
+            if skill_count == 0:
+                for skill in DEFAULT_SKILLS:
+                    conn.execute(
+                        """INSERT INTO skills
+                           (name, category, description, config_json, enhancement_config, status)
+                           VALUES (?,?,?,?,?,1)""",
+                        (
+                            skill["name"], skill["category"], skill["description"],
+                            skill["config_json"], skill["enhancement_config"],
+                        ),
+                    )
+        except Exception:
+            pass
         cursor = conn.execute("SELECT COUNT(*) FROM sensitive_words")
         count = cursor.fetchone()[0]
         if count <= 20:
