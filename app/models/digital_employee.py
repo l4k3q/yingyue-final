@@ -282,31 +282,81 @@ class DigitalEmployeeService:
                     "completion_tokens": result.get("usage", {}).get("completion_tokens", 0),
                     "crawled": True if crawled_content else False
                 }
+            # 模型无响应数据，但如果有crawl4ai采集的内容，则返回该内容
+            if crawled_content:
+                return {
+                    "success": True,
+                    "content": crawled_content,
+                    "type": "crawl4ai_fallback",
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "crawled": True,
+                    "warning": "模型无响应，使用crawl4ai采集的原始内容"
+                }
             return {"success": False, "error": "模型无响应数据"}
         except Exception as e:
+            # 模型调用异常，但如果有crawl4ai采集的内容，则返回该内容
+            if crawled_content:
+                return {
+                    "success": True,
+                    "content": crawled_content,
+                    "type": "crawl4ai_fallback",
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "crawled": True,
+                    "warning": f"模型调用异常({str(e)})，使用crawl4ai采集的原始内容"
+                }
             return {"success": False, "error": str(e)}
 
     @staticmethod
     def _crawl_with_crawl4ai(url: str) -> str:
         try:
-            from crawl4ai import AsyncWebCrawler
+            from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
             import asyncio
-            import nest_asyncio
-            
-            nest_asyncio.apply()
-            crawler = AsyncWebCrawler()
-            result = asyncio.run(crawler.arun(url=url))
-            
+            import threading
+
+            result_holder = [None]
+
+            def _run():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    browser_config = BrowserConfig(headless=True)
+                    crawler_config = CrawlerRunConfig()
+                    crawler = AsyncWebCrawler(config=browser_config)
+                    result_holder[0] = loop.run_until_complete(crawler.arun(url=url, config=crawler_config))
+                finally:
+                    loop.close()
+
+            t = threading.Thread(target=_run)
+            t.start()
+            t.join(timeout=60)
+
+            result = result_holder[0]
+            if result is None:
+                return "crawl4ai采集超时或失败"
+
             if result.success:
                 content = ""
                 if hasattr(result, 'markdown') and result.markdown:
                     content = result.markdown
                 elif hasattr(result, 'html') and result.html:
                     content = result.html
-                
+
+                # 确保内容是UTF-8编码的字符串
+                if isinstance(content, bytes):
+                    try:
+                        content = content.decode('utf-8', errors='ignore')
+                    except:
+                        content = content.decode('gbk', errors='ignore')
+
+                # 清理乱码字符
+                content = content.replace('\ufffd', '')  # 替换替换字符
+                content = content.replace('\x00', '')    # 移除空字符
+
                 if len(content) > 5000:
                     content = content[:5000] + "\n\n[内容过长，已截断]"
-                
+
                 return content
             else:
                 error_msg = ""

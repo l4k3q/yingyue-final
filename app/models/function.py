@@ -38,6 +38,15 @@ class FunctionRepository:
         return dict(row) if row else None
 
     @staticmethod
+    def get_function_by_url(url: str):
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT id, name, icon, url, parent_id, sort_order, status FROM functions WHERE url=?",
+                (url,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    @staticmethod
     def get_all_functions():
         with get_connection() as conn:
             cursor = conn.execute(
