@@ -7,6 +7,10 @@
     <link rel="stylesheet" type="text/css" href="{{ static_url('dist/bootstrap/css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js"></script>
+    <script src="{{ static_url('js/gesture.js') }}"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -377,6 +381,33 @@
             line-height: 1.6;
             word-wrap: break-word;
         }
+        .speak-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 50%;
+            background-color: #2563eb;
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+            transition: all 0.2s;
+            opacity: 0.6;
+        }
+        .speak-btn:hover {
+            opacity: 1;
+            background-color: #1d4ed8;
+        }
+        .speak-btn.playing {
+            background-color: #dc2626;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
         .typing-indicator {
             display: flex;
             gap: 12px;
@@ -564,6 +595,119 @@
             background-color: #f0f0f0;
             margin: 8px 0;
         }
+        .gesture-btn {
+            width: 36px;
+            height: 36px;
+            background-color: #f3f4f6;
+            border: none;
+            border-radius: 8px;
+            color: #6b7280;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+        .gesture-btn:hover {
+            background-color: #e5e7eb;
+            color: #2563eb;
+        }
+        .gesture-btn.active {
+            background-color: #2563eb;
+            color: #fff;
+        }
+        .gesture-panel {
+            position: fixed;
+            top: 80px;
+            right: 24px;
+            width: 320px;
+            background-color: #fff;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            overflow: hidden;
+            z-index: 1000;
+            display: none;
+        }
+        .gesture-panel.show {
+            display: block;
+        }
+        .gesture-panel-header {
+            padding: 12px 16px;
+            background-color: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .gesture-panel-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+        }
+        .gesture-close-btn {
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: none;
+            color: #9ca3af;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 6px;
+        }
+        .gesture-close-btn:hover {
+            background-color: #e5e7eb;
+            color: #374151;
+        }
+        .gesture-video-container {
+            position: relative;
+            width: 100%;
+            height: 240px;
+            background-color: #000;
+        }
+        #gestureVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #gestureCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .gesture-status {
+            padding: 12px 16px;
+            text-align: center;
+            font-size: 14px;
+            color: #9ca3af;
+            background-color: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+        }
+        .gesture-hint {
+            padding: 12px 16px;
+            background-color: #fff;
+            border-top: 1px solid #f0f0f0;
+        }
+        .gesture-hint-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            margin-bottom: 8px;
+        }
+        .gesture-hint-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .gesture-hint-item {
+            font-size: 12px;
+            color: #374151;
+            margin-bottom: 4px;
+        }
         @media (max-width: 768px) {
             .sidebar {
                 position: fixed;
@@ -612,6 +756,29 @@
 <body>
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
     
+    <div class="gesture-panel" id="gesturePanel">
+        <div class="gesture-panel-header">
+            <span class="gesture-panel-title">手势控制</span>
+            <button class="gesture-close-btn" id="gestureCloseBtn">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="gesture-video-container">
+            <video id="gestureVideo" autoplay playsinline></video>
+            <canvas id="gestureCanvas"></canvas>
+        </div>
+        <div class="gesture-status" id="gestureStatus">请做出手势</div>
+        <div class="gesture-hint">
+            <div class="gesture-hint-title">手势说明</div>
+            <ul class="gesture-hint-list">
+                <li class="gesture-hint-item">✌️ 剪刀手 - 查询天气</li>
+                <li class="gesture-hint-item">✊ 握拳 - 播放音乐</li>
+                <li class="gesture-hint-item">🖐️ 手掌 - 获取新闻</li>
+                <li class="gesture-hint-item">☝️ 伸出食指 - 停止生成</li>
+            </ul>
+        </div>
+    </div>
+    
     <div class="app-container">
         <div class="sidebar" id="sidebar">
             <div class="logo-section">
@@ -655,6 +822,9 @@
                     <span class="header-title" id="chatTitle">新对话</span>
                 </div>
                 <div class="header-actions">
+                    <button class="gesture-btn" id="gestureBtn" title="手势控制">
+                        <i class="fas fa-hand"></i>
+                    </button>
                     <div class="user-info">
                         <div class="user-avatar">{{ username[0].upper() if username else 'U' }}</div>
                         <span class="user-name">{{ username }}</span>
@@ -728,6 +898,43 @@
         const atBtn = document.getElementById('atBtn');
         
         const digitalEmployees = [];
+        let selectedModelId = null;
+        let streamingMessageDiv = null;
+        let streamingContentDiv = null;
+
+        function loadModels() {
+            fetch('/api/models')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById('modelSelect');
+                    select.innerHTML = '';
+                    if (data.models && data.models.length > 0) {
+                        data.models.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model.id;
+                            option.textContent = model.name;
+                            if (model.is_default) {
+                                option.selected = true;
+                                selectedModelId = model.id;
+                            }
+                            select.appendChild(option);
+                        });
+                    } else {
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = '默认模型';
+                        select.appendChild(option);
+                    }
+                })
+                .catch(error => console.error('加载模型列表失败:', error));
+        }
+
+        document.getElementById('modelSelect').addEventListener('change', function() {
+            selectedModelId = this.value ? parseInt(this.value) : null;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'set_model', data: { model_id: selectedModelId } }));
+            }
+        });
         
         function initWebSocket() {
             ws = new WebSocket(wsUrl);
@@ -735,7 +942,6 @@
             ws.onopen = function() {
                 console.log('WebSocket 连接成功');
                 loadConversations();
-                loadModels();
             };
             
             ws.onmessage = function(event) {
@@ -744,6 +950,13 @@
                 switch (data.type) {
                     case 'typing':
                         showTyping(data.data);
+                        break;
+                    case 'stream_start':
+                        removeTyping();
+                        appendStreamingMessage();
+                        break;
+                    case 'stream_chunk':
+                        appendStreamChunk(data.data);
                         break;
                     case 'stream':
                         appendMessage('assistant', data.data);
@@ -756,6 +969,8 @@
                         break;
                     case 'done':
                         removeTyping();
+                        streamingMessageDiv = null;
+                        streamingContentDiv = null;
                         break;
                     case 'error':
                         showError(data.data);
@@ -820,27 +1035,6 @@
                 .catch(error => console.error('加载对话列表失败:', error));
         }
 
-        function loadModels() {
-            fetch('/api/models')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.models.length > 0) {
-                        const select = document.getElementById('modelSelect');
-                        select.innerHTML = '';
-                        data.models.forEach(model => {
-                            const option = document.createElement('option');
-                            option.value = model.id;
-                            option.textContent = model.name + (model.is_default ? ' (默认)' : '');
-                            if (model.is_default) {
-                                option.selected = true;
-                            }
-                            select.appendChild(option);
-                        });
-                    }
-                })
-                .catch(error => console.error('加载模型列表失败:', error));
-        }
-
         function loadConversation(conversationId) {
             currentConversationId = conversationId;
             ws.send(JSON.stringify({ type: 'load_conversation', conversation_id: conversationId }));
@@ -868,6 +1062,36 @@
         function clearMessages() {
             chatArea.innerHTML = '';
         }
+
+        function appendStreamingMessage() {
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+            messageDiv.id = 'streamingMessage';
+
+            messageDiv.innerHTML = `
+                <div class="message-avatar"><i class="fas fa-robot"></i></div>
+                <div class="message-content"></div>
+                <div class="message-metadata"></div>
+            `;
+
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+
+            streamingMessageDiv = messageDiv;
+            streamingContentDiv = messageDiv.querySelector('.message-content');
+        }
+
+        function appendStreamChunk(text) {
+            if (!streamingContentDiv) {
+                appendStreamingMessage();
+            }
+            streamingContentDiv.textContent += text;
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
         
         function appendMessage(role, content) {
             if (emptyState) {
@@ -883,16 +1107,59 @@
             
             const isHtml = content.includes('<div') || content.includes('<span') || content.includes('<h') || content.includes('<table');
             
+            const speakBtn = role === 'assistant' 
+                ? `<button class="speak-btn" onclick="speakText(this, '${content.replace(/'/g, "\\'").replace(/\n/g, ' ')}')" title="播放语音">
+                     <i class="fas fa-volume-up"></i>
+                   </button>`
+                : '';
+            
             messageDiv.innerHTML = `
                 ${avatar}
                 <div class="message-content">
                     ${isHtml ? content : content.replace(/\n/g, '<br>')}
                 </div>
+                ${speakBtn}
                 <div class="message-metadata"></div>
             `;
             
             chatArea.appendChild(messageDiv);
             chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        async function speakText(btn, text) {
+            const icon = btn.querySelector('i');
+            btn.classList.add('playing');
+            icon.className = 'fas fa-spinner';
+            
+            try {
+                const xsrfToken = document.cookie.split('; ').find(row => row.startsWith('_xsrf=')).split('=')[1];
+                const response = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-XSRFToken': xsrfToken
+                    },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                const data = await response.json();
+                if (data.success && data.audio) {
+                    const audio = new Audio(`data:audio/wav;base64,${data.audio}`);
+                    audio.play();
+                    audio.onended = () => {
+                        btn.classList.remove('playing');
+                        icon.className = 'fas fa-volume-up';
+                    };
+                } else {
+                    alert(data.message || '语音播放失败');
+                    btn.classList.remove('playing');
+                    icon.className = 'fas fa-volume-up';
+                }
+            } catch (error) {
+                console.error('语音播放错误:', error);
+                btn.classList.remove('playing');
+                icon.className = 'fas fa-volume-up';
+            }
         }
         
         function updateLastMessageMetadata(metadata) {
@@ -982,8 +1249,10 @@
             chatInput.value = '';
             sendBtn.disabled = true;
             
-            const modelId = modelSelect.value;
-            ws.send(JSON.stringify({ type: 'message', data: content, model_id: modelId === 'default' ? null : parseInt(modelId) }));
+            ws.send(JSON.stringify({
+                type: 'message',
+                data: { content: content, model_id: selectedModelId }
+            }));
         }
         
         function newConversation() {
@@ -1113,8 +1382,91 @@
             }
         });
         
+        loadModels();
+
+        const gestureBtn = document.getElementById('gestureBtn');
+        const gesturePanel = document.getElementById('gesturePanel');
+        const gestureCloseBtn = document.getElementById('gestureCloseBtn');
+        const gestureVideo = document.getElementById('gestureVideo');
+        const gestureCanvas = document.getElementById('gestureCanvas');
+        const gestureStatus = document.getElementById('gestureStatus');
+        
+        let gestureRecognizer = null;
+        
+        gestureBtn.addEventListener('click', () => {
+            if (gesturePanel.classList.contains('show')) {
+                closeGesturePanel();
+            } else {
+                openGesturePanel();
+            }
+        });
+        
+        gestureCloseBtn.addEventListener('click', closeGesturePanel);
+        
+        document.addEventListener('click', (e) => {
+            if (!gesturePanel.contains(e.target) && !gestureBtn.contains(e.target)) {
+                gesturePanel.classList.remove('show');
+                gestureBtn.classList.remove('active');
+            }
+        });
+        
+        function openGesturePanel() {
+            gesturePanel.classList.add('show');
+            gestureBtn.classList.add('active');
+            
+            gestureCanvas.width = gestureVideo.offsetWidth;
+            gestureCanvas.height = gestureVideo.offsetHeight;
+            
+            if (!gestureRecognizer) {
+                gestureRecognizer = new GestureRecognizer(
+                    gestureVideo,
+                    gestureCanvas,
+                    gestureStatus,
+                    onGestureDetected
+                );
+            }
+            gestureRecognizer.init();
+        }
+        
+        function closeGesturePanel() {
+            gesturePanel.classList.remove('show');
+            gestureBtn.classList.remove('active');
+            
+            if (gestureRecognizer) {
+                gestureRecognizer.stop();
+            }
+        }
+        
+        function onGestureDetected(gesture) {
+            const gestureActions = {
+                'scissors': '查询天气',
+                'fist': '播放音乐',
+                'palm': '获取新闻',
+                'thumbs_up': '停止生成'
+            };
+            
+            if (gesture === 'thumbs_up') {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'gesture', data: { gesture: gesture } }));
+                }
+                return;
+            }
+            
+            const actionName = gestureActions[gesture];
+            if (actionName) {
+                if (confirm(`检测到手势，是否要${actionName}？`)) {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'gesture', data: { gesture: gesture } }));
+                    }
+                } else {
+                    if (gestureRecognizer) {
+                        gestureRecognizer.resetGesture();
+                    }
+                }
+            }
+        }
+
         initWebSocket();
-        loadConversations();
     </script>
 </body>
 </html>

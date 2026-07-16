@@ -90,6 +90,13 @@ class RoleRepository:
     @staticmethod
     def update_role_functions(role_id: int, function_ids: list):
         with get_connection() as conn:
+            if function_ids:
+                placeholders = ",".join(["?"] * len(function_ids))
+                rows = conn.execute(
+                    f"SELECT id FROM functions WHERE status=1 AND id IN ({placeholders})",
+                    tuple(function_ids)
+                ).fetchall()
+                function_ids = [row["id"] for row in rows]
             conn.execute("DELETE FROM role_functions WHERE role_id=?", (role_id,))
             for func_id in function_ids:
                 conn.execute(

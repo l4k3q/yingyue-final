@@ -8,6 +8,7 @@ from fpdf import FPDF
 
 from app.controllers.base import BaseHandler
 from app.models.conversations import ConversationRepository
+from app.models.user import UserRepository
 
 
 class ExportHandler(BaseHandler):
@@ -28,6 +29,12 @@ class ExportHandler(BaseHandler):
 
         conv = ConversationRepository.get_conversation_by_id(conversation_id)
         if not conv:
+            self.set_status(404)
+            self.write({"error": "对话不存在"})
+            return
+
+        user = UserRepository.get_user_by_username(self.current_user)
+        if not user or conv.get("user_id") != user["id"]:
             self.set_status(404)
             self.write({"error": "对话不存在"})
             return
