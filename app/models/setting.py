@@ -40,10 +40,15 @@ class SystemSettingRepository:
     @staticmethod
     def get_grouped_settings():
         settings = SystemSettingRepository.get_all_settings()
+        group_order = ["general", "database", "security", "llm"]
         groups = {}
         for s in settings:
             group = s["group_name"]
             if group not in groups:
                 groups[group] = []
             groups[group].append(s)
-        return groups
+        ordered = {}
+        for g in group_order:
+            if g in groups:
+                ordered[g] = groups[g]
+        return ordered
