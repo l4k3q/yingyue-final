@@ -20,9 +20,60 @@ class AdminBaseHandler(tornado.web.RequestHandler):
             return None
         return admin.decode("utf-8")
 
+    def get_current_role_id(self):
+        role_cookie = self.get_secure_cookie("admin_role")
+        if role_cookie:
+            try:
+                return int(role_cookie.decode("utf-8"))
+            except ValueError:
+                return 0
+        current_user = self.get_current_user()
+        user = UserRepository.get_user_by_username(current_user) if current_user else None
+        return int(user.get("role_id", 0)) if user else 0
+
+    def get_template_namespace(self):
+        namespace = super().get_template_namespace()
+        current_user = self.get_current_user()
+        role_id = self.get_current_role_id()
+        namespace.update({
+            "current_admin": current_user or "",
+            "current_path": self.request.path,
+            "admin_menu": FunctionRepository.get_menu_tree_for_user(current_user or "", role_id),
+            "is_menu_active": self.is_menu_active,
+        })
+        return namespace
+
+    def is_menu_active(self, menu):
+        path = self.request.path.rstrip("/") or self.request.path
+        url = (menu.get("url") or "").rstrip("/")
+        if url and (path == url or path.startswith(url + "/")):
+            return True
+        for child in menu.get("children", []):
+            child_url = (child.get("url") or "").rstrip("/")
+            if child_url and (path == child_url or path.startswith(child_url + "/")):
+                return True
+        return False
+
+    def write_json(self, payload, status=200):
+        self.set_header("Content-Type", "application/json; charset=utf-8")
+        self.set_status(status)
+        self.write(json.dumps(payload, ensure_ascii=False))
+
     def prepare(self):
-        if not self.get_current_user():
+        current_user = self.get_current_user()
+        if not current_user:
             self.redirect("/admin/login")
+            return
+        if current_user == "admin":
+            return
+        role_id = self.get_current_role_id()
+        if not FunctionRepository.role_can_access_path(role_id, self.request.path):
+            if self.request.method in ("POST", "PUT", "DELETE") or self.request.headers.get("X-Requested-With"):
+                self.write_json({"status": "error", "message": "无权限访问该后台功能"}, status=403)
+            else:
+                self.set_status(403)
+                self.write("<h2>403 无权限</h2><p>当前角色未被授权访问该后台功能。</p>")
+            self.finish()
 
 
 class AdminLoginHandler(tornado.web.RequestHandler):
@@ -61,7 +112,35 @@ class AdminIndexHandler(AdminBaseHandler):
         admins, _ = AdminRepository.get_admins(page=1, page_size=5)
         roles, _ = RoleRepository.get_roles(page=1, page_size=5)
         functions, _ = FunctionRepository.get_functions(page=1, page_size=5)
-        self.render("admin/index.html", title="后台管理", users=users, admins=admins, roles=roles, functions=functions)
+        _, user_total = UserRepository.get_users(page=1, page_size=1)
+        _, role_total = RoleRepository.get_roles(page=1, page_size=1)
+        _, function_total = FunctionRepository.get_functions(page=1, page_size=1)
+        _, model_total = AIModelRepository.get_models(page=1, page_size=1)
+        token_stats = AIModelRepository.get_token_stats()
+        default_model = AIModelRepository.get_default_model()
+        watch_stats = WatchRecordRepository.get_stats()
+        warehouse_stats = DataWarehouseRepository.get_stats()
+        dashboard_stats = {
+            "user_total": user_total,
+            "role_total": role_total,
+            "function_total": function_total,
+            "model_total": model_total,
+            "token_total": token_stats.get("total") or 0,
+            "watch_total": watch_stats.get("total") or 0,
+            "watch_success": watch_stats.get("success") or 0,
+            "warehouse_total": warehouse_stats.get("total") or 0,
+            "deep_collected": warehouse_stats.get("deep_collected") or 0,
+            "default_model": default_model,
+        }
+        self.render(
+            "admin/index.html",
+            title="控制台",
+            users=users,
+            admins=admins,
+            roles=roles,
+            functions=functions,
+            stats=dashboard_stats,
+        )
 
 
 class AdminUserHandler(AdminBaseHandler):
@@ -71,73 +150,74 @@ class AdminUserHandler(AdminBaseHandler):
         users, total = UserRepository.get_users(page=page, page_size=20, keyword=keyword)
         roles, _ = RoleRepository.get_roles(page=1, page_size=100)
         current_user = self.get_current_user()
-        is_admin = current_user == "admin"
-        self.render("admin/users.html", title="用户管理", users=users, total=total, page=page, keyword=keyword, roles=roles, is_admin=is_admin)
+        can_manage_users = current_user == "admin" or FunctionRepository.role_can_access_path(self.get_current_role_id(), "/admin/users")
+        self.render("admin/users.html", title="用户管理", users=users, total=total, page=page, keyword=keyword, roles=roles, is_admin=current_user == "admin", can_manage_users=can_manage_users)
 
     def post(self):
         action = self.get_body_argument("action", "")
         current_user = self.get_current_user()
+        can_manage_users = current_user == "admin" or FunctionRepository.role_can_access_path(self.get_current_role_id(), "/admin/users")
         
         if action == "add":
-            if current_user != "admin":
-                self.write(json.dumps({"status": "error", "message": "只有超级管理员可以添加用户"}))
+            if not can_manage_users:
+                self.write_json({"status": "error", "message": "当前角色无新增用户权限"})
                 return
             username = self.get_body_argument("username", "")
             password = self.get_body_argument("password", "")
             role_id = int(self.get_body_argument("role_id", 1))
             if UserRepository.create_user(username, password, role_id):
-                self.redirect("/admin/users")
+                self.write_json({"status": "success", "message": "用户添加成功"})
             else:
-                self.write(json.dumps({"status": "error", "message": "用户名已存在"}))
+                self.write_json({"status": "error", "message": "用户名已存在"})
         elif action == "edit":
-            if current_user != "admin":
-                self.write(json.dumps({"status": "error", "message": "只有超级管理员可以编辑用户"}))
+            if not can_manage_users:
+                self.write_json({"status": "error", "message": "当前角色无编辑用户权限"})
                 return
             user_id = int(self.get_body_argument("id", 0))
             user = UserRepository.get_user_by_id(user_id)
             if user and user["username"] == "admin":
-                self.write(json.dumps({"status": "error", "message": "超级管理员不允许修改用户名和权限"}))
+                self.write_json({"status": "error", "message": "超级管理员不允许修改用户名和权限"})
                 return
             username = self.get_body_argument("username", "")
             role_id = int(self.get_body_argument("role_id", 1))
             if UserRepository.update_user(user_id, username, role_id):
-                self.redirect("/admin/users")
+                self.write_json({"status": "success", "message": "用户修改成功"})
             else:
-                self.write(json.dumps({"status": "error", "message": "用户名已存在"}))
+                self.write_json({"status": "error", "message": "用户名已存在"})
         elif action == "change_pwd":
             user_id = int(self.get_body_argument("id", 0))
             user = UserRepository.get_user_by_id(user_id)
             if user and user["username"] != current_user:
-                self.write(json.dumps({"status": "error", "message": "只允许修改自己的密码"}))
+                self.write_json({"status": "error", "message": "只允许修改自己的密码"})
                 return
             password = self.get_body_argument("password", "")
             if UserRepository.update_password(user_id, password):
-                self.write(json.dumps({"status": "success", "message": "密码修改成功"}))
+                self.write_json({"status": "success", "message": "密码修改成功"})
             else:
-                self.write(json.dumps({"status": "error", "message": "密码修改失败"}))
+                self.write_json({"status": "error", "message": "密码修改失败"})
         elif action == "delete":
-            if current_user != "admin":
-                self.write(json.dumps({"status": "error", "message": "只有超级管理员可以删除用户"}))
+            if not can_manage_users:
+                self.write_json({"status": "error", "message": "当前角色无删除用户权限"})
                 return
             user_id = int(self.get_body_argument("id", 0))
             user = UserRepository.get_user_by_id(user_id)
             if user and user["username"] == "admin":
-                self.write(json.dumps({"status": "error", "message": "超级管理员不允许删除"}))
+                self.write_json({"status": "error", "message": "超级管理员不允许删除"})
                 return
             UserRepository.delete_user(user_id)
-            self.write(json.dumps({"status": "success"}))
+            self.write_json({"status": "success"})
         elif action == "toggle":
-            if current_user != "admin":
-                self.write(json.dumps({"status": "error", "message": "只有超级管理员可以禁用用户"}))
+            if not can_manage_users:
+                self.write_json({"status": "error", "message": "当前角色无禁用用户权限"})
                 return
             user_id = int(self.get_body_argument("id", 0))
             user = UserRepository.get_user_by_id(user_id)
             if user and user["username"] == "admin":
-                self.write(json.dumps({"status": "error", "message": "超级管理员不允许禁用"}))
+                self.write_json({"status": "error", "message": "超级管理员不允许禁用"})
                 return
             status = int(self.get_body_argument("status", 0))
             UserRepository.toggle_user_status(user_id, status)
-            self.write(json.dumps({"status": "success"}))
+            self.write_json({"status": "success"})
 
 
 class AdminRoleHandler(AdminBaseHandler):
@@ -182,14 +262,27 @@ class AdminRoleFunctionsHandler(AdminBaseHandler):
     def get(self):
         role_id = int(self.get_query_argument("role_id", 0))
         role = RoleRepository.get_role_by_id(role_id)
-        function_tree = FunctionRepository.get_function_tree()
+        function_tree = FunctionRepository.get_function_tree(only_enabled=True)
         selected_ids = RoleRepository.get_role_functions(role_id)
-        self.render("admin/role_functions.html", title="角色权限配置", role=role, function_tree=json.dumps(function_tree), selected_ids=json.dumps(selected_ids))
+        self.render(
+            "admin/role_functions.html",
+            title="角色权限配置",
+            role=role,
+            function_nodes=function_tree,
+            selected_ids=selected_ids,
+        )
 
     def post(self):
         role_id = int(self.get_body_argument("role_id", 0))
+        role = RoleRepository.get_role_by_id(role_id)
+        if role and role["is_default"]:
+            self.write_json({"status": "error", "message": "默认角色权限不允许修改"})
+            return
         function_ids = self.get_body_argument("function_ids", "")
-        function_ids = [int(f) for f in function_ids.split(",") if f.strip()]
+        if function_ids:
+            function_ids = [int(f) for f in function_ids.split(",") if f.strip()]
+        else:
+            function_ids = [int(f) for f in self.get_body_arguments("function_check") if f.strip()]
         RoleRepository.update_role_functions(role_id, function_ids)
         self.redirect("/admin/roles")
 
@@ -583,6 +676,7 @@ class AdminModelHandler(AdminBaseHandler):
             model_id = self.get_body_argument("model_id", "")
             api_key = self.get_body_argument("api_key", "")
             base_url = self.get_body_argument("base_url", "")
+            model_type = self.get_body_argument("model_type", "text")
             temperature = float(self.get_body_argument("temperature", 0.7))
             max_tokens = int(self.get_body_argument("max_tokens", 4096))
             top_p = float(self.get_body_argument("top_p", 0.9))
@@ -591,7 +685,7 @@ class AdminModelHandler(AdminBaseHandler):
             description = self.get_body_argument("description", "")
             provider = self.get_body_argument("provider", "openai")
             
-            if AIModelRepository.create_model(name, model_id, api_key, base_url, temperature, max_tokens, top_p, frequency_penalty, presence_penalty, description, provider):
+            if AIModelRepository.create_model(name, model_id, api_key, base_url, temperature, max_tokens, top_p, frequency_penalty, presence_penalty, description, provider, model_type):
                 self.write(json.dumps({"status": "success", "message": "模型添加成功"}))
             else:
                 self.write(json.dumps({"status": "error", "message": "模型名称已存在"}))
@@ -601,6 +695,7 @@ class AdminModelHandler(AdminBaseHandler):
             model_id_str = self.get_body_argument("model_id", "")
             api_key = self.get_body_argument("api_key", "")
             base_url = self.get_body_argument("base_url", "")
+            model_type = self.get_body_argument("model_type", "text")
             temperature = float(self.get_body_argument("temperature", 0.7))
             max_tokens = int(self.get_body_argument("max_tokens", 4096))
             top_p = float(self.get_body_argument("top_p", 0.9))
@@ -609,7 +704,7 @@ class AdminModelHandler(AdminBaseHandler):
             description = self.get_body_argument("description", "")
             provider = self.get_body_argument("provider", "openai")
             
-            if AIModelRepository.update_model(model_id, name, model_id_str, api_key, base_url, temperature, max_tokens, top_p, frequency_penalty, presence_penalty, description, provider):
+            if AIModelRepository.update_model(model_id, name, model_id_str, api_key, base_url, temperature, max_tokens, top_p, frequency_penalty, presence_penalty, description, provider, model_type):
                 self.write(json.dumps({"status": "success", "message": "模型更新成功"}))
             else:
                 self.write(json.dumps({"status": "error", "message": "模型名称已存在"}))
@@ -639,9 +734,9 @@ class AdminModelHandler(AdminBaseHandler):
 
 
 class AdminModelTestHandler(AdminBaseHandler):
-    def post(self):
-        model_id = int(self.get_body_argument("model_id", 0))
-        prompt = self.get_body_argument("prompt", "")
+    def get(self):
+        model_id = int(self.get_query_argument("model_id", 0))
+        prompt = self.get_query_argument("prompt", "")
         
         model = AIModelRepository.get_model_by_id(model_id)
         if not model:
@@ -658,31 +753,44 @@ class AdminModelTestHandler(AdminBaseHandler):
         completion_tokens = 0
         
         try:
-            for chunk in AIModelService.chat_completion(model, messages):
-                if "choices" in chunk and chunk["choices"]:
-                    delta = chunk["choices"][0].get("delta", {})
-                    if "content" in delta:
-                        content = delta["content"]
-                        full_content += content
-                        completion_tokens += AIModelService.estimate_tokens(content)
-                        self.write(f"data: {json.dumps({
-                            'type': 'token',
-                            'content': content,
-                            'prompt_tokens': prompt_tokens,
-                            'completion_tokens': completion_tokens,
-                            'total_tokens': prompt_tokens + completion_tokens
-                        })}\n\n")
-                        self.flush()
+            if model.get("model_type", "text") == "text":
+                for chunk in AIModelService.chat_completion(model, messages):
+                    if "choices" in chunk and chunk["choices"]:
+                        delta = chunk["choices"][0].get("delta", {})
+                        if "content" in delta:
+                            content = delta["content"]
+                            full_content += content
+                            completion_tokens += AIModelService.estimate_tokens(content)
+                            self.write(f"data: {json.dumps({
+                                'type': 'token',
+                                'content': content,
+                                'prompt_tokens': prompt_tokens,
+                                'completion_tokens': completion_tokens,
+                                'total_tokens': prompt_tokens + completion_tokens
+                            }, ensure_ascii=False)}\n\n")
+                            self.flush()
+            else:
+                result = AIModelService.generate_multimodal(model, prompt)
+                full_content = result.get("content", "")
+                completion_tokens = AIModelService.estimate_tokens(full_content)
+                self.write(f"data: {json.dumps({
+                    'type': 'token',
+                    'content': full_content,
+                    'prompt_tokens': prompt_tokens,
+                    'completion_tokens': completion_tokens,
+                    'total_tokens': prompt_tokens + completion_tokens
+                }, ensure_ascii=False)}\n\n")
+                self.flush()
             self.write(f"data: {json.dumps({
                 'type': 'done',
                 'content': full_content,
                 'prompt_tokens': prompt_tokens,
                 'completion_tokens': completion_tokens,
                 'total_tokens': prompt_tokens + completion_tokens
-            })}\n\n")
+            }, ensure_ascii=False)}\n\n")
             AIModelRepository.update_tokens(model_id, prompt_tokens, completion_tokens)
         except Exception as e:
-            self.write(f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n")
+            self.write(f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n")
         self.finish()
 
 

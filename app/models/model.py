@@ -54,16 +54,16 @@ class AIModelRepository:
                      temperature: float = 0.7, max_tokens: int = 4096,
                      top_p: float = 0.9, frequency_penalty: float = 0.0,
                      presence_penalty: float = 0.0, description: str = "",
-                     provider: str = "openai") -> bool:
+                     provider: str = "openai", model_type: str = "text") -> bool:
         try:
             with get_connection() as conn:
                 conn.execute(
                     """INSERT INTO ai_models 
                     (name, model_id, api_key, base_url, temperature, max_tokens,
-                     top_p, frequency_penalty, presence_penalty, description, provider)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                     top_p, frequency_penalty, presence_penalty, description, provider, model_type)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (name, model_id, api_key, base_url, temperature, max_tokens,
-                     top_p, frequency_penalty, presence_penalty, description, provider)
+                     top_p, frequency_penalty, presence_penalty, description, provider, model_type)
                 )
             return True
         except sqlite3.IntegrityError:
@@ -74,16 +74,16 @@ class AIModelRepository:
                      temperature: float = 0.7, max_tokens: int = 4096,
                      top_p: float = 0.9, frequency_penalty: float = 0.0,
                      presence_penalty: float = 0.0, description: str = "",
-                     provider: str = "openai") -> bool:
+                     provider: str = "openai", model_type: str = "text") -> bool:
         try:
             with get_connection() as conn:
                 conn.execute(
                     """UPDATE ai_models SET name=?, model_id=?, api_key=?, base_url=?, 
                     temperature=?, max_tokens=?, top_p=?, frequency_penalty=?, 
-                    presence_penalty=?, description=?, provider=?, updated_at=datetime('now','localtime') 
+                    presence_penalty=?, description=?, provider=?, model_type=?, updated_at=datetime('now','localtime') 
                     WHERE id=?""",
                     (name, model_id_str, api_key, base_url, temperature, max_tokens,
-                     top_p, frequency_penalty, presence_penalty, description, provider, model_id)
+                     top_p, frequency_penalty, presence_penalty, description, provider, model_type, model_id)
                 )
             return True
         except sqlite3.IntegrityError:
@@ -130,6 +130,17 @@ class AIModelRepository:
                    FROM ai_models"""
             ).fetchone()
         return dict(row) if row else {"total": 0, "prompt": 0, "completion": 0, "count": 0}
+
+    @staticmethod
+    def get_type_stats():
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT COALESCE(model_type, 'text') as model_type, COUNT(*) as count FROM ai_models GROUP BY COALESCE(model_type, 'text')"
+            ).fetchall()
+        stats = {"text": 0, "image": 0, "video": 0}
+        for row in rows:
+            stats[row["model_type"]] = row["count"]
+        return stats
 
 
 class AIModelService:
@@ -184,6 +195,110 @@ class AIModelService:
                             continue
         
         return stream_generator()
+
+    @staticmethod
+    def _looks_like_html(response) -> bool:
+        content_type = response.headers.get("Content-Type", "").lower()
+        text = (response.text or "").lstrip().lower()
+        return "text/html" in content_type or text.startswith("<!doctype html") or text.startswith("<html")
+
+    @staticmethod
+    def _multimodal_urls(model_config: dict, endpoint: str):
+        base_url = model_config["base_url"].rstrip("/")
+        urls = [f"{base_url}{endpoint}"]
+        parsed = urllib.parse.urlparse(base_url)
+        path = parsed.path.rstrip("/")
+        if not path.endswith("/v1") and "/api/paas/" not in path:
+            urls.append(f"{base_url}/v1{endpoint}")
+        return urls
+
+    @staticmethod
+    def _friendly_html_error(url: str):
+        parsed = urllib.parse.urlparse(url)
+        root = f"{parsed.scheme}://{parsed.netloc}"
+        return (
+            "### 调用失败\n\n"
+            "模型网关返回的是网页 HTML，不是模型 API JSON。通常是 Base URL 填成了管理后台首页地址。\n\n"
+            f"- 当前请求地址：`{url}`\n"
+            f"- New API / OpenAI 兼容网关通常应填写：`{root}/v1`\n"
+            "- 然后生图接口会调用：`/images/generations`\n"
+            "- 请确认模型类型选择为“生图”，模型 ID 填写该网关支持的 GLM 生图模型名。"
+        )
+
+    @staticmethod
+    def _format_multimodal_payload(payload: dict, model_type: str):
+        title = "图像生成结果" if model_type == "image" else "视频生成结果"
+        data = payload.get("data") if isinstance(payload, dict) else None
+        blocks = [f"### {title}"]
+
+        if isinstance(data, list) and data:
+            for index, item in enumerate(data, start=1):
+                if not isinstance(item, dict):
+                    continue
+                url = item.get("url") or item.get("video_url") or item.get("output_url")
+                b64_json = item.get("b64_json")
+                if url:
+                    if model_type == "image":
+                        blocks.append(f"![生成图片 {index}]({url})")
+                    else:
+                        blocks.append(f"[生成视频 {index}]({url})")
+                elif b64_json and model_type == "image":
+                    blocks.append(f"![生成图片 {index}](data:image/png;base64,{b64_json})")
+
+        blocks.append("```json\n" + json.dumps(payload, ensure_ascii=False, indent=2) + "\n```")
+        return "\n\n".join(blocks)
+
+    @staticmethod
+    def generate_multimodal(model_config: dict, prompt: str):
+        model_type = model_config.get("model_type", "text")
+        endpoint = "/images/generations" if model_type == "image" else "/videos/generations"
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {model_config['api_key']}"
+        }
+        data = {
+            "model": model_config["model_id"],
+            "prompt": prompt,
+            "n": 1
+        }
+
+        last_response = None
+        last_url = ""
+        for url in AIModelService._multimodal_urls(model_config, endpoint):
+            last_url = url
+            response = requests.post(url, headers=headers, json=data, timeout=120, verify=False)
+            last_response = response
+            if AIModelService._looks_like_html(response):
+                continue
+            break
+
+        if last_response is None:
+            return {"success": False, "content": "### 调用失败\n\n未发起有效请求。"}
+
+        response = last_response
+        if AIModelService._looks_like_html(response):
+            return {"success": False, "content": AIModelService._friendly_html_error(last_url)}
+
+        try:
+            payload = response.json()
+        except Exception:
+            payload = {"status_code": response.status_code, "text": response.text[:1000]}
+            return {
+                "success": False,
+                "content": "### 调用失败\n\n接口没有返回 JSON。\n\n```json\n" + json.dumps(payload, ensure_ascii=False, indent=2) + "\n```"
+            }
+
+        if response.status_code >= 400 or payload.get("error"):
+            return {
+                "success": False,
+                "content": "### 调用失败\n\n```json\n" + json.dumps(payload, ensure_ascii=False, indent=2) + "\n```"
+            }
+
+        return {
+            "success": True,
+            "content": AIModelService._format_multimodal_payload(payload, model_type)
+        }
 
     @staticmethod
     def test_model(model_config: dict):

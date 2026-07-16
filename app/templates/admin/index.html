@@ -1,174 +1,202 @@
 {% extends "../admin/base.html" %}
 {% block body %}
-<div class="layui-row">
-    <div class="layui-col-md3">
-        <div class="admin-card">
-            <div class="layui-row">
-                <div class="layui-col-md8">
-                    <h3 class="text-2xl font-bold text-gray-800">128</h3>
-                    <p class="text-gray-500 text-sm">总用户数</p>
-                </div>
-                <div class="layui-col-md4 text-right">
-                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-                        <i class="fas fa-users text-blue-500 text-xl"></i>
+<style>
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+        margin-bottom: 18px;
+    }
+    .metric-card {
+        background: #fff;
+        border-radius: 8px;
+        padding: 18px;
+        box-shadow: 0 2px 10px rgba(29, 33, 41, 0.08);
+        border-left: 4px solid #165DFF;
+    }
+    .metric-card.green { border-left-color: #00B42A; }
+    .metric-card.orange { border-left-color: #FF7D00; }
+    .metric-card.purple { border-left-color: #722ED1; }
+    .metric-title {
+        color: #86909C;
+        font-size: 13px;
+        margin-bottom: 10px;
+    }
+    .metric-value {
+        color: #1D2129;
+        font-size: 30px;
+        font-weight: 700;
+        line-height: 1;
+    }
+    .metric-sub {
+        margin-top: 10px;
+        color: #4E5969;
+        font-size: 12px;
+    }
+    .panel-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 18px;
+    }
+    .status-list {
+        display: grid;
+        gap: 14px;
+    }
+    .status-row {
+        display: grid;
+        grid-template-columns: 110px 1fr 70px;
+        align-items: center;
+        gap: 12px;
+        color: #4E5969;
+    }
+    .bar-track {
+        height: 10px;
+        border-radius: 999px;
+        background: #E5E6EB;
+        overflow: hidden;
+    }
+    .bar-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #165DFF, #00B42A);
+    }
+    .quick-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .quick-actions .layui-btn {
+        width: 100%;
+        text-align: left;
+    }
+    .recent-table td,
+    .recent-table th {
+        font-size: 13px;
+    }
+    @media (max-width: 1100px) {
+        .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .panel-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+        .dashboard-grid { grid-template-columns: 1fr; }
+        .quick-actions { grid-template-columns: 1fr; }
+    }
+</style>
+
+<div class="dashboard-grid">
+    <div class="metric-card">
+        <div class="metric-title">用户总数</div>
+        <div class="metric-value">{{ stats["user_total"] }}</div>
+        <div class="metric-sub">含后台管理员与普通用户</div>
+    </div>
+    <div class="metric-card green">
+        <div class="metric-title">权限功能</div>
+        <div class="metric-value">{{ stats["function_total"] }}</div>
+        <div class="metric-sub">角色 {{ stats["role_total"] }} 个</div>
+    </div>
+    <div class="metric-card orange">
+        <div class="metric-title">模型服务</div>
+        <div class="metric-value">{{ stats["model_total"] }}</div>
+        <div class="metric-sub">Token 累计 {{ "{:,}".format(stats["token_total"]) }}</div>
+    </div>
+    <div class="metric-card purple">
+        <div class="metric-title">数据仓库</div>
+        <div class="metric-value">{{ stats["warehouse_total"] }}</div>
+        <div class="metric-sub">深度采集 {{ stats["deep_collected"] }} 条</div>
+    </div>
+</div>
+
+<div class="panel-grid">
+    <div class="admin-card">
+        <div class="layui-card-header">
+            <h3>系统状态</h3>
+        </div>
+        <div class="layui-card-body">
+            {% set watch_total = stats["watch_total"] if stats["watch_total"] else 1 %}
+            {% set warehouse_total = stats["warehouse_total"] if stats["warehouse_total"] else 1 %}
+            {% set model_total = stats["model_total"] if stats["model_total"] else 1 %}
+            <div class="status-list">
+                <div class="status-row">
+                    <span>采集成功率</span>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: {{ int(stats['watch_success'] * 100 / watch_total) }}%;"></div>
                     </div>
+                    <strong>{{ int(stats["watch_success"] * 100 / watch_total) }}%</strong>
+                </div>
+                <div class="status-row">
+                    <span>深度采集率</span>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: {{ int(stats['deep_collected'] * 100 / warehouse_total) }}%;"></div>
+                    </div>
+                    <strong>{{ int(stats["deep_collected"] * 100 / warehouse_total) }}%</strong>
+                </div>
+                <div class="status-row">
+                    <span>模型配置率</span>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: {{ 100 if stats['model_total'] > 0 else 0 }}%;"></div>
+                    </div>
+                    <strong>{{ 100 if stats["model_total"] > 0 else 0 }}%</strong>
                 </div>
             </div>
         </div>
     </div>
-    <div class="layui-col-md3">
-        <div class="admin-card">
-            <div class="layui-row">
-                <div class="layui-col-md8">
-                    <h3 class="text-2xl font-bold text-gray-800">56</h3>
-                    <p class="text-gray-500 text-sm">今日访问</p>
-                </div>
-                <div class="layui-col-md4 text-right">
-                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                        <i class="fas fa-eye text-green-500 text-xl"></i>
-                    </div>
-                </div>
-            </div>
+
+    <div class="admin-card">
+        <div class="layui-card-header">
+            <h3>默认模型</h3>
         </div>
-    </div>
-    <div class="layui-col-md3">
-        <div class="admin-card">
-            <div class="layui-row">
-                <div class="layui-col-md8">
-                    <h3 class="text-2xl font-bold text-gray-800">24</h3>
-                    <p class="text-gray-500 text-sm">活跃对话</p>
-                </div>
-                <div class="layui-col-md4 text-right">
-                    <div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto">
-                        <i class="fas fa-comments text-purple-500 text-xl"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="layui-col-md3">
-        <div class="admin-card">
-            <div class="layui-row">
-                <div class="layui-col-md8">
-                    <h3 class="text-2xl font-bold text-gray-800">8</h3>
-                    <p class="text-gray-500 text-sm">采集任务</p>
-                </div>
-                <div class="layui-col-md4 text-right">
-                    <div class="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
-                        <i class="fas fa-download text-orange-500 text-xl"></i>
-                    </div>
-                </div>
+        <div class="layui-card-body">
+            {% if stats["default_model"] %}
+            <p><strong>{{ stats["default_model"].get("name", "") }}</strong></p>
+            <p class="text-muted">{{ stats["default_model"].get("model_id", "") }}</p>
+            <p>
+                <span class="layui-badge layui-bg-blue">{{ stats["default_model"].get("provider", "openai") }}</span>
+                <span class="layui-badge layui-bg-green">{{ stats["default_model"].get("model_type", "text") }}</span>
+            </p>
+            {% else %}
+            <p class="text-muted">暂未配置默认模型</p>
+            {% end %}
+            <div class="quick-actions">
+                <a class="layui-btn layui-btn-primary" href="/admin/users"><i class="layui-icon layui-icon-user"></i> 用户管理</a>
+                <a class="layui-btn" href="/admin/functions"><i class="layui-icon layui-icon-app"></i> 功能管理</a>
+                <a class="layui-btn" href="/admin/menus"><i class="layui-icon layui-icon-tabs"></i> 菜单管理</a>
+                <a class="layui-btn" href="/admin/model"><i class="layui-icon layui-icon-engine"></i> 模型引擎</a>
             </div>
         </div>
     </div>
 </div>
-<div class="layui-row">
-    <div class="layui-col-md8">
-        <div class="admin-card">
-            <div class="layui-card-header">
-                <h4 class="font-bold text-gray-800">数据概览</h4>
-            </div>
-            <div class="layui-card-body">
-                <div id="main-chart" style="height: 300px;"></div>
-            </div>
-        </div>
+
+<div class="admin-card">
+    <div class="layui-card-header">
+        <h3>近期用户</h3>
     </div>
-    <div class="layui-col-md4">
-        <div class="admin-card">
-            <div class="layui-card-header">
-                <h4 class="font-bold text-gray-800">快速操作</h4>
-            </div>
-            <div class="layui-card-body">
-                <div class="layui-btn-group-vertical w-full">
-                    <button class="layui-btn layui-btn-primary w-full text-left">
-                        <i class="fas fa-plus-circle mr-2"></i>添加用户
-                    </button>
-                    <button class="layui-btn layui-btn-primary w-full text-left">
-                        <i class="fas fa-search mr-2"></i>查看数据
-                    </button>
-                    <button class="layui-btn layui-btn-primary w-full text-left">
-                        <i class="fas fa-refresh mr-2"></i>刷新采集
-                    </button>
-                    <button class="layui-btn layui-btn-primary w-full text-left">
-                        <i class="fas fa-chart-bar mr-2"></i>查看报表
-                    </button>
-                </div>
-            </div>
-        </div>
-        <div class="admin-card">
-            <div class="layui-card-header">
-                <h4 class="font-bold text-gray-800">系统状态</h4>
-            </div>
-            <div class="layui-card-body">
-                <div class="layui-progress layui-progress-big" lay-showpercent="true">
-                    <div class="layui-progress-bar layui-bg-blue" lay-percent="60%"></div>
-                </div>
-                <p class="text-gray-500 text-sm mt-2">CPU 使用率</p>
-                <div class="layui-progress layui-progress-big" lay-showpercent="true">
-                    <div class="layui-progress-bar layui-bg-green" lay-percent="45%"></div>
-                </div>
-                <p class="text-gray-500 text-sm mt-2">内存使用率</p>
-                <div class="layui-progress layui-progress-big" lay-showpercent="true">
-                    <div class="layui-progress-bar layui-bg-orange" lay-percent="30%"></div>
-                </div>
-                <p class="text-gray-500 text-sm mt-2">磁盘使用率</p>
-            </div>
-        </div>
+    <div class="layui-card-body">
+        <table class="layui-table recent-table">
+            <thead>
+                <tr>
+                    <th>用户名</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user["username"] }}</td>
+                    <td>{{ user["role_name"] if user["role_name"] else "-" }}</td>
+                    <td>
+                        {% if user["status"] == 1 %}
+                        <span class="layui-badge layui-bg-green">正常</span>
+                        {% else %}
+                        <span class="layui-badge layui-bg-red">禁用</span>
+                        {% end %}
+                    </td>
+                    <td>{{ user["created_at"] }}</td>
+                </tr>
+                {% end %}
+            </tbody>
+        </table>
     </div>
 </div>
-<div class="layui-row">
-    <div class="layui-col-md12">
-        <div class="admin-card">
-            <div class="layui-card-header">
-                <h4 class="font-bold text-gray-800">最近活动</h4>
-            </div>
-            <div class="layui-card-body">
-                <table class="layui-table">
-                    <thead>
-                        <tr>
-                            <th>操作人</th>
-                            <th>操作类型</th>
-                            <th>操作内容</th>
-                            <th>操作时间</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>admin</td>
-                            <td><span class="layui-badge">登录</span></td>
-                            <td>管理员登录系统</td>
-                            <td>2025-01-15 10:30:00</td>
-                        </tr>
-                        <tr>
-                            <td>user001</td>
-                            <td><span class="layui-badge layui-bg-green">对话</span></td>
-                            <td>发起智能问数对话</td>
-                            <td>2025-01-15 10:25:00</td>
-                        </tr>
-                        <tr>
-                            <td>user002</td>
-                            <td><span class="layui-badge layui-bg-blue">查询</span></td>
-                            <td>查询销售报表</td>
-                            <td>2025-01-15 10:20:00</td>
-                        </tr>
-                        <tr>
-                            <td>admin</td>
-                            <td><span class="layui-badge layui-bg-orange">配置</span></td>
-                            <td>更新模型引擎配置</td>
-                            <td>2025-01-15 10:15:00</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-{% end %}
-{% block script %}
-<script>
-layui.use(['element', 'progress'], function(){
-    var element = layui.element;
-    element.init();
-});
-</script>
 {% end %}

@@ -1,7 +1,6 @@
 {% extends "../admin/base.html" %}
 {% block body %}
 <div style="display:none;">{% module xsrf_form_html() %}</div>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
     :root {
         --primary-gradient: linear-gradient(135deg, #165DFF 0%, #0E42D2 100%);
@@ -586,29 +585,29 @@
         max-height: 300px;
     }
 
-    .test-output :deep(h1),
-    .test-output :deep(h2),
-    .test-output :deep(h3),
-    .test-output :deep(h4),
-    .test-output :deep(h5),
-    .test-output :deep(h6) {
+    .test-output h1,
+    .test-output h2,
+    .test-output h3,
+    .test-output h4,
+    .test-output h5,
+    .test-output h6 {
         color: #fff;
         font-weight: 700;
         margin: 16px 0 8px;
         line-height: 1.4;
     }
 
-    .test-output :deep(h1) { font-size: 24px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px; }
-    .test-output :deep(h2) { font-size: 20px; }
-    .test-output :deep(h3) { font-size: 18px; }
-    .test-output :deep(h4), .test-output :deep(h5), .test-output :deep(h6) { font-size: 16px; }
+    .test-output h1 { font-size: 24px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px; }
+    .test-output h2 { font-size: 20px; }
+    .test-output h3 { font-size: 18px; }
+    .test-output h4, .test-output h5, .test-output h6 { font-size: 16px; }
 
-    .test-output :deep(p) { margin: 8px 0; }
-    .test-output :deep(strong), .test-output :deep(b) { font-weight: 700; color: #fff; }
-    .test-output :deep(em), .test-output :deep(i) { font-style: italic; }
-    .test-output :deep(s), .test-output :deep(del) { text-decoration: line-through; color: rgba(255,255,255,0.5); }
+    .test-output p { margin: 8px 0; }
+    .test-output strong, .test-output b { font-weight: 700; color: #fff; }
+    .test-output em, .test-output i { font-style: italic; }
+    .test-output s, .test-output del { text-decoration: line-through; color: rgba(255,255,255,0.5); }
 
-    .test-output :deep(code) {
+    .test-output code {
         background: rgba(255, 255, 255, 0.1);
         padding: 2px 6px;
         border-radius: 4px;
@@ -617,7 +616,7 @@
         color: #FFD700;
     }
 
-    .test-output :deep(pre) {
+    .test-output pre {
         background: rgba(0, 0, 0, 0.5);
         padding: 12px;
         border-radius: 6px;
@@ -625,26 +624,26 @@
         margin: 12px 0;
     }
 
-    .test-output :deep(pre code) {
+    .test-output pre code {
         background: transparent;
         padding: 0;
         color: #69B1FF;
     }
 
-    .test-output :deep(ul), .test-output :deep(ol) {
+    .test-output ul, .test-output ol {
         padding-left: 24px;
         margin: 8px 0;
     }
 
-    .test-output :deep(li) {
+    .test-output li {
         margin: 4px 0;
     }
 
-    .test-output :deep(li > p) {
+    .test-output li > p {
         margin: 4px 0;
     }
 
-    .test-output :deep(blockquote) {
+    .test-output blockquote {
         border-left: 3px solid var(--accent-color);
         padding-left: 12px;
         margin: 12px 0;
@@ -652,39 +651,50 @@
         font-style: italic;
     }
 
-    .test-output :deep(a) {
+    .test-output a {
         color: #69B1FF;
         text-decoration: none;
     }
 
-    .test-output :deep(a:hover) {
+    .test-output a:hover {
         text-decoration: underline;
     }
 
-    .test-output :deep(hr) {
+    .test-output img,
+    .test-output video {
+        display: block;
+        max-width: 100%;
+        max-height: 360px;
+        border-radius: 10px;
+        margin: 12px 0;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.06);
+    }
+
+    .test-output hr {
         border: none;
         border-top: 1px solid rgba(255, 255, 255, 0.2);
         margin: 20px 0;
     }
 
-    .test-output :deep(table) {
+    .test-output table {
         width: 100%;
         border-collapse: collapse;
         margin: 12px 0;
     }
 
-    .test-output :deep(th), .test-output :deep(td) {
+    .test-output th, .test-output td {
         border: 1px solid rgba(255, 255, 255, 0.2);
         padding: 8px 12px;
         text-align: left;
     }
 
-    .test-output :deep(th) {
+    .test-output th {
         background: rgba(255, 255, 255, 0.1);
         font-weight: 700;
     }
 
-    .test-output :deep(tr:nth-child(even)) {
+    .test-output tr:nth-child(even) {
         background: rgba(255, 255, 255, 0.03);
     }
 
@@ -817,6 +827,9 @@
 
         <div class="model-config">
             <span class="config-tag provider">{{ model.get('provider', 'openai').upper() }}</span>
+            <span class="config-tag">
+                {% if model.get('model_type', 'text') == 'image' %}生图{% elif model.get('model_type', 'text') == 'video' %}生视频{% else %}生文{% end %}
+            </span>
             <span class="config-tag">temp: {{ model.get('temperature', 0.7) }}</span>
             <span class="config-tag">max: {{ model.get('max_tokens', 4096) }}</span>
         </div>
@@ -866,12 +879,20 @@
                     <input type="text" id="model_id" required placeholder="例如：gpt-4-turbo">
                 </div>
                 <div class="form-group">
+                    <label>模型类型 *</label>
+                    <select id="model_type">
+                        <option value="text">生文 / 对话模型</option>
+                        <option value="image">生图 / 图像生成</option>
+                        <option value="video">生视频 / 视频生成</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>API Key *</label>
                     <input type="password" id="api_key" required placeholder="sk-...">
                 </div>
                 <div class="form-group">
                     <label>Base URL *</label>
-                    <input type="url" id="base_url" required placeholder="https://api.openai.com/v1">
+                    <input type="url" id="base_url" required placeholder="例如：https://你的网关域名/v1">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -937,6 +958,35 @@
 {% block script %}
 <script>
 var currentModelId = null;
+function escapeHtml(text) {
+    return String(text || '').replace(/[&<>"']/g, function(ch) {
+        return ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[ch];
+    });
+}
+
+function renderMarkdown(markdownText) {
+    if (window.marked && window.marked.parse) {
+        return window.marked.parse(markdownText);
+    }
+    var text = escapeHtml(markdownText);
+    text = text.replace(/```([\s\S]*?)```/g, function(_, code) {
+        return '<pre><code>' + code.trim() + '</code></pre>';
+    });
+    text = text.replace(/^### (.*)$/gm, '<h3>$1</h3>');
+    text = text.replace(/^## (.*)$/gm, '<h2>$1</h2>');
+    text = text.replace(/^# (.*)$/gm, '<h1>$1</h1>');
+    text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+    text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return text.split(/\n{2,}/).map(function(block) {
+        if (/^<h\d|^<pre|^<ul|^<ol/.test(block)) {
+            return block;
+        }
+        return '<p>' + block.replace(/\n/g, '<br>') + '</p>';
+    }).join('');
+}
+
 function getXsrfToken() {
     var token = '';
     var inputs = document.querySelectorAll('input[name="_xsrf"]');
@@ -975,6 +1025,7 @@ function openEditModal(id) {
             document.getElementById('modelId').value = data.id;
             document.getElementById('name').value = data.name;
             document.getElementById('model_id').value = data.model_id;
+            document.getElementById('model_type').value = data.model_type || 'text';
             document.getElementById('api_key').value = data.api_key;
             document.getElementById('base_url').value = data.base_url;
             document.getElementById('temperature').value = data.temperature;
@@ -1005,6 +1056,7 @@ function submitForm() {
         id: document.getElementById('modelId').value,
         name: document.getElementById('name').value,
         model_id: document.getElementById('model_id').value,
+        model_type: document.getElementById('model_type').value,
         api_key: document.getElementById('api_key').value,
         base_url: document.getElementById('base_url').value,
         temperature: document.getElementById('temperature').value,
@@ -1069,7 +1121,7 @@ function runTest() {
         var data = JSON.parse(e.data);
         if (data.type === 'token') {
             fullContent += data.content;
-            document.getElementById('testOutput').innerHTML = marked.parse(fullContent);
+            document.getElementById('testOutput').innerHTML = renderMarkdown(fullContent);
             document.getElementById('testTokens').innerHTML = 
                 `<span>Prompt: ${data.prompt_tokens}</span> 
                  <span>Completion: ${data.completion_tokens}</span> 
