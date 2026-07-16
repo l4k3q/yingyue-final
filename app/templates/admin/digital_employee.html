@@ -534,6 +534,15 @@
                 <div class="type-section" id="apiSection">
                     <h4 style="margin-bottom: 12px; font-size: 14px; color: #333;">API类型配置</h4>
                     <div class="form-group">
+                        <label>关联接口</label>
+                        <select name="api_interface_id" id="api_interface_id" onchange="loadInterfaceConfig()">
+                            <option value="0">选择已注册的接口（可选）</option>
+                            {% for interface in interfaces %}
+                            <option value="{{ interface['id'] }}">{{ interface['name'] }}</option>
+                            {% end %}
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label>API地址 <span style="color: #F56C6C;">*</span></label>
                         <input type="text" name="api_url" id="api_url" placeholder="https://api.example.com/endpoint">
                     </div>
@@ -559,6 +568,10 @@
                     <div class="form-group">
                         <label>请求体（JSON格式，POST/PUT时使用）</label>
                         <textarea name="api_body" id="api_body" placeholder='{"key": "value"}'></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>卡片模板（用于格式化API返回结果展示）</label>
+                        <textarea name="card_template" id="card_template" placeholder='{"title": "{title}", "content": "{content}"}'></textarea>
                     </div>
                 </div>
             </form>
@@ -639,6 +652,8 @@ function editEmployee(id) {
             document.getElementById('api_headers').value = data.api_headers || '';
             document.getElementById('api_params').value = data.api_params || '';
             document.getElementById('api_body').value = data.api_body || '';
+            document.getElementById('api_interface_id').value = data.api_interface_id || '0';
+            document.getElementById('card_template').value = data.card_template || '';
             switchType(data.type || '1');
             document.getElementById('employeeModal').classList.add('show');
         }
@@ -661,6 +676,41 @@ function switchType(type) {
     } else {
         document.getElementById('apiSection').classList.add('active');
     }
+}
+
+function loadInterfaceConfig() {
+    var interfaceId = document.getElementById('api_interface_id').value;
+    if (!interfaceId || interfaceId === '0') {
+        return;
+    }
+    
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/admin/api_interface');
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.setRequestHeader('X-XSRFToken', getXsrfToken());
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            var data = JSON.parse(xhr.responseText);
+            if (data.status !== 'error') {
+                if (!document.getElementById('api_url').value) {
+                    document.getElementById('api_url').value = data.url || '';
+                }
+                if (document.getElementById('api_method').value === 'GET') {
+                    document.getElementById('api_method').value = data.method || 'GET';
+                }
+                if (!document.getElementById('api_headers').value) {
+                    document.getElementById('api_headers').value = data.headers || '';
+                }
+                if (!document.getElementById('api_params').value) {
+                    document.getElementById('api_params').value = data.params || '';
+                }
+                if (!document.getElementById('api_body').value) {
+                    document.getElementById('api_body').value = data.body || '';
+                }
+            }
+        }
+    };
+    xhr.send('action=get&id=' + interfaceId);
 }
 
 function handleMdFileSelect(input) {

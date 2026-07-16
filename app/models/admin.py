@@ -95,6 +95,7 @@ class AdminRepository:
     def verify_admin(username: str, password: str) -> bool:
         from app.models.user import UserRepository
         from app.models.role import RoleRepository
+        from app.models.function import FunctionRepository
         
         user = UserRepository.get_user_by_username(username)
         if not user:
@@ -112,9 +113,11 @@ class AdminRepository:
         salt = bytes.fromhex(user["salt"])
         if _hash_password(password, salt) != user["password_hash"]:
             return False
+
+        if user["username"] == "admin":
+            return True
         
         role = RoleRepository.get_role_by_id(user["role_id"])
-        if not role or role["name"] != "系统管理员":
+        if not role or role["status"] != 1:
             return False
-        
-        return True
+        return FunctionRepository.role_has_admin_access(user["role_id"])

@@ -33,6 +33,10 @@ def init_db():
             )
             """
         )
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN face_embedding TEXT")
+        except sqlite3.OperationalError:
+            pass
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS admins(
@@ -130,11 +134,16 @@ def init_db():
                 completion_tokens INTEGER DEFAULT 0,
                 description TEXT,
                 provider TEXT DEFAULT 'openai',
+                model_type TEXT NOT NULL DEFAULT 'text',
                 created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
             )
             """
         )
+        try:
+            conn.execute("ALTER TABLE ai_models ADD COLUMN model_type TEXT NOT NULL DEFAULT 'text'")
+        except sqlite3.OperationalError:
+            pass
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS data_warehouse(
@@ -184,6 +193,32 @@ def init_db():
             pass
         try:
             conn.execute("ALTER TABLE digital_employees ADD COLUMN md_files_path TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE digital_employees ADD COLUMN api_interface_id INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS api_interfaces(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                url TEXT NOT NULL,
+                method TEXT DEFAULT 'GET',
+                headers TEXT DEFAULT '{}',
+                params TEXT DEFAULT '{}',
+                body TEXT DEFAULT '{}',
+                response_mapping TEXT DEFAULT '{}',
+                description TEXT,
+                status INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
+        try:
+            conn.execute("ALTER TABLE watch_sources ADD COLUMN collect_config TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
         conn.execute(
@@ -249,6 +284,33 @@ def init_db():
             )
             """
         )
+        # 幂等迁移旧 conversations.messages JSON，避免启用独立消息表后丢失历史上下文。
+        import json
+        legacy_conversations = conn.execute(
+            "SELECT id, user_id, messages FROM conversations WHERE messages IS NOT NULL AND messages != '' AND messages != '[]'"
+        ).fetchall()
+        for conversation in legacy_conversations:
+            existing_count = conn.execute(
+                "SELECT COUNT(*) FROM messages WHERE conversation_id=?",
+                (conversation["id"],),
+            ).fetchone()[0]
+            if existing_count:
+                continue
+            try:
+                legacy_messages = json.loads(conversation["messages"])
+            except (json.JSONDecodeError, TypeError):
+                legacy_messages = []
+            for index, message in enumerate(legacy_messages, start=1):
+                conn.execute(
+                    """INSERT INTO messages
+                       (conversation_id, user_id, role, content, msg_type, msg_index)
+                       VALUES (?,?,?,?,?,?)""",
+                    (
+                        conversation["id"], conversation["user_id"],
+                        message.get("role", "assistant"), message.get("content", ""),
+                        message.get("type", "text"), message.get("index", index),
+                    ),
+                )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS skills(
@@ -282,6 +344,133 @@ def init_db():
             conn.execute("ALTER TABLE skills ADD COLUMN enhancement_config TEXT DEFAULT '{}'")
         except sqlite3.OperationalError:
             pass
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sensitive_words(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                word TEXT NOT NULL UNIQUE,
+                category TEXT DEFAULT '通用',
+                severity INTEGER DEFAULT 1,
+                status INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS security_alerts(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_type TEXT NOT NULL,
+                source_id INTEGER DEFAULT 0,
+                user_id INTEGER DEFAULT 0,
+                username TEXT DEFAULT '',
+                matched_words TEXT DEFAULT '',
+                content_snippet TEXT DEFAULT '',
+                risk_level INTEGER DEFAULT 1,
+                ai_analysis TEXT DEFAULT '',
+                status INTEGER NOT NULL DEFAULT 0,
+                handler_id INTEGER DEFAULT 0,
+                handled_at TEXT DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS content_scan_logs(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                target_type TEXT NOT NULL,
+                target_id INTEGER DEFAULT 0,
+                content_hash TEXT DEFAULT '',
+                is_safe INTEGER NOT NULL DEFAULT 1,
+                matched_count INTEGER DEFAULT 0,
+                scan_time TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
+        try:
+            conn.execute("ALTER TABLE sensitive_words ADD COLUMN patterns TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        cursor = conn.execute("SELECT COUNT(*) FROM admins WHERE username='admin'")
+        def ensure_role(name, description, is_default=0):
+            row = conn.execute("SELECT id FROM roles WHERE name=?", (name,)).fetchone()
+            if row:
+                conn.execute(
+                    "UPDATE roles SET description=?, is_default=?, status=1 WHERE id=?",
+                    (description, is_default, row["id"])
+                )
+                return row["id"]
+            cursor = conn.execute(
+                "INSERT INTO roles (name, description, is_default, status) VALUES (?,?,?,1)",
+                (name, description, is_default)
+            )
+            return cursor.lastrowid
+
+        def ensure_function(name, icon, url, parent_id=0, sort_order=0):
+            row = conn.execute(
+                "SELECT id FROM functions WHERE name=? AND parent_id=?",
+                (name, parent_id)
+            ).fetchone()
+            if row:
+                conn.execute(
+                    "UPDATE functions SET icon=?, url=?, sort_order=?, status=1 WHERE id=?",
+                    (icon, url, sort_order, row["id"])
+                )
+                return row["id"]
+            cursor = conn.execute(
+                "INSERT INTO functions (name, icon, url, parent_id, sort_order, status) VALUES (?,?,?,?,?,1)",
+                (name, icon, url, parent_id, sort_order)
+            )
+            return cursor.lastrowid
+
+        def ensure_role_function(role_id, function_id):
+            conn.execute(
+                "INSERT OR IGNORE INTO role_functions (role_id, function_id) VALUES (?,?)",
+                (role_id, function_id)
+            )
+
+        user_role_id = ensure_role("普通用户", "只能登录前台-用户侧", 1)
+        admin_role_id = ensure_role("系统管理员", "只能登录后台-后台管理系统", 1)
+        user_admin_role_id = ensure_role("用户管理员", "负责后台用户列表、用户状态和普通用户资料维护", 0)
+
+        dashboard_id = ensure_function("控制台", "layui-icon-home", "/admin/index", 0, 1)
+        user_root_id = ensure_function("用户管理", "layui-icon-user", "/admin/users", 0, 2)
+        user_list_id = ensure_function("用户列表", "layui-icon-list", "/admin/users", user_root_id, 1)
+        permission_root_id = ensure_function("权限管理", "layui-icon-set", "/admin/functions", 0, 3)
+        function_id = ensure_function("功能管理", "layui-icon-app", "/admin/functions", permission_root_id, 1)
+        menu_id = ensure_function("菜单管理", "layui-icon-tabs", "/admin/menus", permission_root_id, 2)
+        role_id = ensure_function("角色管理", "layui-icon-group", "/admin/roles", permission_root_id, 3)
+        data_root_id = ensure_function("数据管理", "layui-icon-chart", "/admin/data", 0, 4)
+        watch_id = ensure_function("瞭望采集", "layui-icon-search", "/admin/watch", data_root_id, 1)
+        data_id = ensure_function("数据仓库", "layui-icon-table", "/admin/data", data_root_id, 2)
+        collection_id = ensure_function("采集管理", "layui-icon-template", "/admin/collection", data_root_id, 3)
+        ai_root_id = ensure_function("AI管理", "layui-icon-service", "/admin/model", 0, 5)
+        employee_id = ensure_function("数字员工", "layui-icon-username", "/admin/digital_employee", ai_root_id, 1)
+        model_id = ensure_function("模型引擎", "layui-icon-engine", "/admin/model", ai_root_id, 2)
+        api_interface_id = ensure_function("接口管理", "layui-icon-link", "/admin/api_interface", ai_root_id, 3)
+        big_screen_id = ensure_function("数智大屏", "layui-icon-chart-screen", "/admin/screen", 0, 6)
+        sentiment_id = ensure_function("舆情大屏", "layui-icon-dialogue", "/admin/sentiment", 0, 7)
+        sensitive_word_id = ensure_function("敏感词管理", "layui-icon-password", "/admin/sensitive-word", sentiment_id, 1)
+        security_alert_id = ensure_function("预警记录", "layui-icon-notice", "/admin/security-alert", sentiment_id, 2)
+        setting_id = ensure_function("系统设置", "layui-icon-set", "/admin/setting", 0, 8)
+        conversation_admin_id = ensure_function("会话管理", "layui-icon-dialogue", "/admin/conversations", 0, 9)
+        message_admin_id = ensure_function("对话管理", "layui-icon-reply-fill", "/admin/messages", 0, 10)
+        skill_admin_id = ensure_function("技能管理", "layui-icon-util", "/admin/skills", 0, 11)
+
+        all_admin_functions = [
+            dashboard_id, user_root_id, user_list_id, permission_root_id, function_id, menu_id, role_id,
+            data_root_id, watch_id, data_id, collection_id, ai_root_id, employee_id, model_id,
+            api_interface_id, big_screen_id, sentiment_id, sensitive_word_id,
+            security_alert_id, setting_id, conversation_admin_id,
+            message_admin_id, skill_admin_id
+        ]
+        for function_id_value in all_admin_functions:
+            ensure_role_function(admin_role_id, function_id_value)
+
+        for function_id_value in [dashboard_id, user_root_id, user_list_id]:
+            ensure_role_function(user_admin_role_id, function_id_value)
 
         conn.execute(
             """
@@ -331,14 +520,26 @@ def init_db():
                 )
         cursor = conn.execute("SELECT COUNT(*) FROM admins WHERE username='admin'")
         count = cursor.fetchone()[0]
+        import hashlib
+        import secrets
+        salt = secrets.token_bytes(16)
+        password_hash = hashlib.pbkdf2_hmac("sha256", "admin888".encode("utf-8"), salt, 100_000).hex()
         if count == 0:
-            import hashlib
-            import secrets
-            salt = secrets.token_bytes(16)
-            password_hash = hashlib.pbkdf2_hmac("sha256", "admin888".encode("utf-8"), salt, 100_000).hex()
             conn.execute(
-                "INSERT INTO admins (username, password_hash, salt, is_super) VALUES (?,?,?,?)",
+                "INSERT INTO admins (username, password_hash, salt, is_super, status) VALUES (?,?,?,?,1)",
                 ("admin", password_hash, salt.hex(), 1)
+            )
+
+        admin_user = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()
+        if admin_user:
+            conn.execute(
+                "UPDATE users SET role_id=?, status=1 WHERE username='admin'",
+                (admin_role_id,)
+            )
+        else:
+            conn.execute(
+                "INSERT INTO users (username, password_hash, salt, role_id, status) VALUES (?,?,?,?,1)",
+                ("admin", password_hash, salt.hex(), admin_role_id)
             )
         cursor = conn.execute("SELECT COUNT(*) FROM roles")
         count = cursor.fetchone()[0]
@@ -363,8 +564,10 @@ def init_db():
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('AI管理', 'icon-robot', '/admin/model', 0, 5)")
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('数字员工', 'icon-face', '/admin/digital_employee', 13, 1)")
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('模型引擎', 'icon-cpu', '/admin/model', 13, 2)")
-            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('数智大屏', 'icon-screen', '/admin/dashboard', 0, 6)")
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('数智大屏', 'icon-screen', '/admin/screen', 0, 6)")
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('舆情大屏', 'icon-cloud', '/admin/sentiment', 0, 7)")
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('敏感词管理', 'icon-lock', '/admin/sensitive-word', 17, 1)")
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('预警记录', 'icon-warning', '/admin/security-alert', 17, 2)")
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('系统设置', 'icon-set', '/admin/setting', 0, 8)")
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 1)")
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 2)")
@@ -384,6 +587,19 @@ def init_db():
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 16)")
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 17)")
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 18)")
+            conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 19)")
+
+        # Ensure new function entries exist (for existing databases)
+        cursor = conn.execute("SELECT COUNT(*) FROM functions WHERE url='/admin/sensitive-word'")
+        if cursor.fetchone()[0] == 0:
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('敏感词管理', 'icon-lock', '/admin/sensitive-word', 17, 1)")
+            new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, ?)", (new_id,))
+        cursor = conn.execute("SELECT COUNT(*) FROM functions WHERE url='/admin/security-alert'")
+        if cursor.fetchone()[0] == 0:
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('预警记录', 'icon-warning', '/admin/security-alert', 17, 2)")
+            new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, ?)", (new_id,))
 
         # 确保已有数据库也包含系统设置菜单
         cursor = conn.execute("SELECT COUNT(*) FROM functions WHERE url='/admin/setting'")
@@ -441,9 +657,46 @@ def init_db():
                 "tn": "news",
                 "rsv_dl": "ns_pc"
             }
+            baidu_config = {
+                "keyword_param": "word",
+                "page_param": "pn",
+                "page_start": 0,
+                "page_step": 10,
+                "parser": "baidu_news"
+            }
             conn.execute(
-                "INSERT INTO watch_sources (name, url, request_headers, params, status, description) VALUES (?,?,?,?,?,?)",
-                ("百度新闻", "https://www.baidu.com/s", json.dumps(baidu_headers), json.dumps(baidu_params), 1, "百度新闻搜索接口，支持关键词搜索和分页")
+                "INSERT INTO watch_sources (name, url, request_headers, params, status, description, collect_config) VALUES (?,?,?,?,?,?,?)",
+                ("百度新闻", "https://www.baidu.com/s", json.dumps(baidu_headers), json.dumps(baidu_params), 1, "百度新闻搜索接口，支持关键词搜索和分页", json.dumps(baidu_config))
+            )
+
+            sina_headers = {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Host": "search.sina.com.cn",
+                "Pragma": "no-cache",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 QQBrowser/21.4.9121.400",
+                "sec-ch-ua": "\"Chromium\";v=\"138\", \"Not=A?Brand\";v=\"8\", \"QQBrowser\";v=\"138\"",
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": "\"Windows\""
+            }
+            sina_params = {}
+            sina_config = {
+                "keyword_param": "q",
+                "page_param": "page",
+                "page_start": 1,
+                "page_step": 1,
+                "parser": "sina_news"
+            }
+            conn.execute(
+                "INSERT INTO watch_sources (name, url, request_headers, params, status, description, collect_config) VALUES (?,?,?,?,?,?,?)",
+                ("新浪新闻", "https://search.sina.com.cn/", json.dumps(sina_headers), json.dumps(sina_params), 1, "新浪新闻搜索接口，支持关键词搜索和分页", json.dumps(sina_config))
             )
         
         cursor = conn.execute("SELECT COUNT(*) FROM ai_models")
@@ -520,9 +773,304 @@ def init_db():
                 ("采集专员", "collector", 1, 1, "你是采集专员，负责网页内容深度采集。URL: {url}", "网页内容深度采集")
             )
 
-        # 初始化默认技能数据
+        # 使用当前事务初始化默认技能，避免新数据库中嵌套连接看不到未提交的 skills 表。
         try:
-            from app.models.skills_enhancement import seed_default_skills
-            seed_default_skills()
+            from app.models.skills_enhancement import DEFAULT_SKILLS
+            skill_count = conn.execute("SELECT COUNT(*) FROM skills").fetchone()[0]
+            if skill_count == 0:
+                for skill in DEFAULT_SKILLS:
+                    conn.execute(
+                        """INSERT INTO skills
+                           (name, category, description, config_json, enhancement_config, status)
+                           VALUES (?,?,?,?,?,1)""",
+                        (
+                            skill["name"], skill["category"], skill["description"],
+                            skill["config_json"], skill["enhancement_config"],
+                        ),
+                    )
         except Exception:
             pass
+        cursor = conn.execute("SELECT COUNT(*) FROM sensitive_words")
+        count = cursor.fetchone()[0]
+        if count <= 20:
+            seed_words = [
+                # 政治类 - 高风险
+                ("颠覆国家政权", "政治", 3),
+                ("危害国家安全", "政治", 3),
+                ("泄露国家秘密", "政治", 3),
+                ("破坏国家统一", "政治", 3),
+                ("煽动颠覆国家政权", "政治", 3),
+                ("分裂国家", "政治", 3),
+                ("煽动分裂国家", "政治", 3),
+                ("武装叛乱", "政治", 3),
+                ("暴乱", "政治", 3),
+                ("间谍", "政治", 3),
+                ("特务", "政治", 3),
+                ("叛国", "政治", 3),
+                ("推翻政府", "政治", 3),
+                ("反动", "政治", 3),
+                ("反党", "政治", 3),
+                ("反华", "政治", 3),
+                ("煽动民族仇恨", "政治", 3),
+                ("民族分裂", "政治", 3),
+                ("邪教", "政治", 3),
+                ("法轮功", "政治", 3),
+                ("恐怖组织", "政治", 3),
+                ("恐怖分子", "政治", 3),
+                ("恐怖袭击", "政治", 3),
+                ("伊斯兰国", "政治", 3),
+                ("东突", "政治", 3),
+                ("藏独", "政治", 3),
+                ("台独", "政治", 3),
+                ("港独", "政治", 3),
+                ("疆独", "政治", 3),
+
+                # 违法类 - 高风险
+                ("枪支弹药", "违法", 3, '[{"type":"proximity","words":["买","枪","弹"],"distance":6},{"type":"proximity","words":["卖","枪"],"distance":4},{"type":"proximity","words":["买","枪支"],"distance":4}]'),
+                ("枪支", "违法", 3, '[{"type":"proximity","words":["买","枪"],"distance":5},{"type":"proximity","words":["卖","枪"],"distance":5},{"type":"proximity","words":["做","枪"],"distance":4}]'),
+                ("弹药", "违法", 3),
+                ("炸药", "违法", 3),
+                ("雷管", "违法", 3),
+                ("炸弹", "违法", 3, '[{"type":"proximity","words":["做","炸弹"],"distance":4},{"type":"proximity","words":["买","炸弹"],"distance":4}]'),
+                ("爆炸物", "违法", 3),
+                ("枪支制造", "违法", 3),
+                ("贩卖枪支", "违法", 3),
+                ("贩卖毒品", "违法", 3),
+                ("制毒", "违法", 3),
+                ("吸毒", "违法", 3),
+                ("贩毒", "违法", 3, '[{"type":"proximity","words":["买","毒"],"distance":3},{"type":"proximity","words":["卖","毒"],"distance":3},{"type":"proximity","words":["要","毒"],"distance":3}]'),
+                ("毒品", "违法", 3, '[{"type":"proximity","words":["买","毒"],"distance":3},{"type":"proximity","words":["卖","毒"],"distance":3}]'),
+                ("海洛因", "违法", 3),
+                ("冰毒", "违法", 3),
+                ("吗啡", "违法", 3),
+                ("大麻", "违法", 3),
+                ("摇头丸", "违法", 3),
+                ("K粉", "违法", 3),
+                ("可卡因", "违法", 3),
+                ("鸦片", "违法", 3),
+                ("病毒制作", "违法", 3),
+                ("木马病毒", "违法", 3),
+                ("勒索病毒", "违法", 3),
+                ("黑客攻击", "违法", 3),
+                ("DDoS攻击", "违法", 3),
+                ("网络攻击工具", "违法", 3),
+                ("盗取账号", "违法", 3),
+                ("钓鱼网站", "违法", 3),
+                ("贩卖公民信息", "违法", 3),
+                ("个人信息买卖", "违法", 3),
+                ("身份证号贩卖", "违法", 3),
+                ("开锁工具", "违法", 3),
+                ("假钞", "违法", 3),
+                ("假币", "违法", 3),
+                ("伪造货币", "违法", 3),
+                ("洗钱", "违法", 3),
+                ("地下钱庄", "违法", 3),
+                ("非法集资", "违法", 3),
+                ("传销组织", "违法", 3),
+                ("庞氏骗局", "违法", 3),
+                ("组织领导传销", "违法", 3),
+
+                # 违法类 - 中风险
+                ("网络诈骗", "违法", 2),
+                ("电信诈骗", "违法", 2),
+                ("诈骗团伙", "违法", 2),
+                ("杀猪盘", "违法", 2),
+                ("刷单诈骗", "违法", 2),
+                ("冒充公检法", "违法", 2),
+                ("电话诈骗", "违法", 2),
+                ("短信诈骗", "违法", 2),
+                ("金融诈骗", "违法", 2),
+                ("套路贷", "违法", 2),
+                ("高利贷", "违法", 2),
+                ("裸贷", "违法", 2),
+                ("校园贷", "违法", 2),
+                ("赌博网站", "违法", 2),
+                ("网络赌博", "违法", 2),
+                ("境外赌博", "违法", 2),
+                ("六合彩", "违法", 2),
+                ("赌球", "违法", 2),
+                ("赌场", "违法", 2),
+                ("赌资", "违法", 2),
+                ("制假售假", "违法", 2),
+                ("假冒伪劣", "违法", 2),
+                ("侵犯知识产权", "违法", 2),
+                ("盗版软件", "违法", 2),
+                ("盗版影视", "违法", 2),
+                ("商业间谍", "违法", 2),
+                ("窃取商业机密", "违法", 2),
+                ("内幕交易", "违法", 2),
+                ("操纵股市", "违法", 2),
+                ("偷税漏税", "违法", 2),
+                ("虚开发票", "违法", 2),
+                ("骗保", "违法", 2),
+                ("医保诈骗", "违法", 2),
+                ("拐卖人口", "违法", 2),
+                ("拐卖妇女", "违法", 2),
+                ("拐卖儿童", "违法", 2),
+                ("人体器官交易", "违法", 2),
+                ("偷渡", "违法", 2),
+                ("走私", "违法", 2),
+                ("非法越境", "违法", 2),
+                ("黑社会", "违法", 2),
+                ("黑恶势力", "违法", 2),
+                ("保护伞", "违法", 2),
+                ("暴力催收", "违法", 2),
+                ("非法拘禁", "违法", 2),
+                ("绑架", "违法", 2),
+                ("勒索", "违法", 2),
+                ("敲诈", "违法", 2),
+
+                # 色情类
+                ("色情淫秽", "色情", 2),
+                ("色情视频", "色情", 2),
+                ("色情直播", "色情", 2),
+                ("色情网站", "色情", 2),
+                ("黄片", "色情", 2),
+                ("A片", "色情", 2),
+                ("成人电影", "色情", 2),
+                ("情色小说", "色情", 2),
+                ("淫秽物品", "色情", 2),
+                ("裸聊", "色情", 2),
+                ("招嫖", "色情", 2),
+                ("卖淫", "色情", 2),
+                ("嫖娼", "色情", 2),
+                ("嫖客", "色情", 2),
+                ("小姐上门", "色情", 2),
+                ("援交", "色情", 2),
+                ("一夜情", "色情", 2),
+                ("约炮", "色情", 2),
+                ("性服务", "色情", 2),
+                ("儿童色情", "色情", 3),
+
+                # 谣言/虚假信息
+                ("散布谣言", "违法", 1),
+                ("传播谣言", "违法", 1),
+                ("虚假新闻", "违法", 1),
+                ("造谣", "违法", 1),
+                ("传谣", "违法", 1),
+                ("假新闻", "违法", 1),
+                ("不实信息", "违法", 1),
+                ("网络谣言", "违法", 1),
+                ("恶意诽谤", "违法", 1),
+                ("诋毁他人", "违法", 1),
+                ("人身攻击", "违法", 1),
+                ("恶意炒作", "违法", 1),
+                ("煽动对立", "违法", 1),
+                ("制造恐慌", "违法", 1),
+                ("疫情谣言", "违法", 1),
+                ("疫苗谣言", "违法", 1),
+
+                # 自杀/自残类
+                ("自杀方法", "违法", 2),
+                ("如何自杀", "违法", 2),
+                ("相约自杀", "违法", 2),
+                ("自杀群", "违法", 2),
+                ("自残教程", "违法", 2),
+                ("割腕", "违法", 1),
+                ("蓝鲸游戏", "违法", 3),
+
+                # 违禁物品/管制
+                ("管制刀具", "违法", 2),
+                ("电击器", "违法", 2),
+                ("迷药", "违法", 2),
+                ("迷魂药", "违法", 2),
+                ("安眠药购买", "违法", 2),
+                ("听话水", "违法", 2),
+                ("GHB", "违法", 2),
+                ("窃听器", "违法", 2),
+                ("针孔摄像头", "违法", 2),
+                ("偷拍设备", "违法", 2),
+                ("伪基站", "违法", 2),
+                ("信号干扰器", "违法", 2),
+                ("翻墙软件", "违法", 1),
+                ("VPN翻墙", "违法", 1),
+                ("科学上网", "违法", 1),
+
+                # 高危常见变体/短词组合 - 覆盖常见的规避说法
+                ("买枪", "违法", 3),
+                ("卖枪", "违法", 3),
+                ("做枪", "违法", 3),
+                ("造枪", "违法", 3),
+                ("持枪", "违法", 3),
+                ("藏枪", "违法", 3),
+                ("贩枪", "违法", 3),
+                ("买毒", "违法", 3),
+                ("卖毒", "违法", 3),
+                ("买到毒", "违法", 3),
+                ("买毒品", "违法", 3),
+                ("卖毒品", "违法", 3),
+                ("种毒", "违法", 3),
+                ("运毒", "违法", 3),
+                ("藏毒", "违法", 3),
+                ("制弹", "违法", 3),
+                ("买弹", "违法", 3),
+                ("炸学校", "违法", 3),
+                ("炸政府", "违法", 3),
+                ("买迷药", "违法", 2),
+                ("买窃听", "违法", 2),
+                ("买监听", "违法", 2),
+                ("招嫖信息", "色情", 2),
+                ("找小姐", "色情", 2),
+                ("上门服务", "色情", 2),
+            ]
+            for item in seed_words:
+                word = item[0]
+                category = item[1]
+                severity = item[2]
+                patterns = item[3] if len(item) > 3 else ""
+                conn.execute(
+                    "INSERT OR IGNORE INTO sensitive_words (word, category, severity, patterns) VALUES (?,?,?,?)",
+                    (word, category, severity, patterns)
+                )
+            music_card = """<div class="music-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 20px; color: #fff; min-width: 300px;">
+                <div style="display: flex; gap: 16px; align-items: center;">
+                    <div style="flex-shrink: 0; width: 100px; height: 100px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
+                        <img src="{artwork_url}" alt="专辑封面" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23444%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2255%22 text-anchor=%22middle%22 fill=%22%23999%22 font-size=%2214%22>🎵</text></svg>';">
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 18px; font-weight: 700; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🎵 {track_name}</div>
+                        <div style="font-size: 14px; opacity: 0.9; margin-bottom: 4px;">👤 {artist_name}</div>
+                        <div style="font-size: 13px; opacity: 0.75;">💿 {collection_name}</div>
+                    </div>
+                </div>
+                <div style="margin-top: 14px; display: flex; justify-content: space-around; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 12px; font-size: 13px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.7;">风格</div>
+                        <div style="font-weight: 500;">{genre}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.7;">时长</div>
+                        <div style="font-weight: 500;">{duration}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 11px; opacity: 0.7;">价格</div>
+                        <div style="font-weight: 500;">{price}</div>
+                    </div>
+                </div>
+                <div style="margin-top: 10px; text-align: center;">
+                    <a href="{track_url}" target="_blank" style="color: #fff; text-decoration: none; font-size: 12px; opacity: 0.8; border: 1px solid rgba(255,255,255,0.3); border-radius: 20px; padding: 4px 16px; display: inline-block;">🎧 在 iTunes 中打开</a>
+                </div>
+            </div>"""
+
+            conn.execute(
+                """INSERT INTO digital_employees (name, code_name, type, api_url, api_method, api_params, card_template, description)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                ("随机音乐", "music", 2, "https://itunes.apple.com/search", "GET", '{"limit": "10", "entity": "song"}', music_card, "随机推荐一首歌曲，支持指定风格或关键词")
+            )
+
+            conn.execute(
+                """INSERT INTO digital_employees (name, code_name, type, model_id, prompt, description)
+                VALUES (?,?,?,?,?,?)""",
+                ("文案写作助手", "copywriter", 1, 1, "你是一位资深的文案写作专家，擅长各类商业文案创作。你可以帮助用户撰写：\n- 广告文案（品牌slogan、产品描述、营销文案）\n- 社交媒体内容（微信公众号、微博、小红书文案）\n- 商业文档（商业计划书、融资BP、公司介绍）\n- 创意文案（品牌故事、软文、新闻稿）\n- 视频脚本（短视频、宣传片、口播文案）\n\n请根据用户需求，提供专业、高质量、可直接使用的文案内容。注意：\n1. 文案需符合目标平台的风格和规范\n2. 注意版权合规，避免抄袭\n3. 输出结构清晰，标题醒目\n4. 可使用emoji增强可读性（社交媒体文案）\n5. 字数根据用户要求灵活调整\n\n用户需求：{query}", "专业的商业文案写作助手")
+            )
+
+        cursor = conn.execute("SELECT COUNT(*) FROM api_interfaces")
+        count = cursor.fetchone()[0]
+        if count == 0:
+            conn.execute(
+                """INSERT INTO api_interfaces (name, url, method, params, response_mapping, description, status) 
+                VALUES (?,?,?,?,?,?,?)""",
+                ("天气查询", "https://wttr.in/{city}?format=j1", "GET", '{"city": "Beijing"}', 
+                 '{"location": "nearest_area[0].areaName[0].value", "temp": "current_condition[0].temp_C", "condition": "current_condition[0].weatherDesc[0].value"}', 
+                 "获取指定城市天气信息", 1)
+            )

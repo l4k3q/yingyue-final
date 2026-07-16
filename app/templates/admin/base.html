@@ -30,6 +30,16 @@
         .layui-nav-tree .layui-nav-item.layui-this a {
             background-color: #165DFF;
         }
+        .layui-nav-tree .layui-nav-child dd.layui-this a {
+            background-color: #165DFF !important;
+            color: #fff !important;
+        }
+        .layui-nav-tree .layui-nav-itemed > a {
+            color: #fff !important;
+        }
+        .layui-nav-tree .layui-icon {
+            margin-right: 8px;
+        }
         .layui-body {
             background-color: #F2F3F6;
         }
@@ -63,12 +73,12 @@
 <body class="layui-layout layui-layout-admin">
     <div class="layui-header">
         <div class="layui-logo">
-            <i class="fas fa-binoculars mr-2"></i>{{ site.get('site_name', '智能瞭望与问数系统') }}
+            <i class="layui-icon layui-icon-chart-screen"></i>{{ site.get('site_name', '智能瞭望与问数系统') }}
         </div>
         <ul class="layui-nav layui-layout-right">
             <li class="layui-nav-item">
                 <a href="javascript:;">
-                    <i class="fas fa-user-circle mr-2"></i>管理员
+                    <i class="layui-icon layui-icon-username"></i>{{ current_admin if current_admin else "管理员" }}
                 </a>
                 <dl class="layui-nav-child">
                     <dd><a href="javascript:;">个人中心</a></dd>
@@ -77,7 +87,7 @@
             </li>
             <li class="layui-nav-item">
                 <a href="/admin/setting">
-                    <i class="fas fa-cog"></i>
+                    <i class="layui-icon layui-icon-set"></i>
                 </a>
             </li>
         </ul>
@@ -85,90 +95,26 @@
     <div class="layui-side layui-bg-black">
         <div class="layui-side-scroll">
             <ul class="layui-nav layui-nav-tree">
-                <li class="layui-nav-item">
-                    <a href="/admin/index">
-                        <i class="fas fa-home"></i>
-                        <span>系统首页</span>
+                {% for menu in admin_menu %}
+                <li class="layui-nav-item {% if is_menu_active(menu) and menu.get('children') %}layui-nav-itemed{% elif is_menu_active(menu) %}layui-this{% end %}">
+                    <a href="{{ 'javascript:;' if menu.get('children') else (menu.get('url') or 'javascript:;') }}">
+                        <i class="layui-icon {{ menu.get('icon_class', 'layui-icon-app') }}"></i>
+                        <span>{{ menu.get('name', '') }}</span>
                     </a>
-                </li>
-                <li class="layui-nav-item">
-                    <a href="javascript:;">
-                        <i class="fas fa-users"></i>
-                        <span>用户管理</span>
-                    </a>
+                    {% if menu.get('children') %}
                     <dl class="layui-nav-child">
-                        <dd><a href="/admin/users">用户列表</a></dd>
-                        <dd><a href="javascript:;">添加用户</a></dd>
+                        {% for child in menu.get('children', []) %}
+                        <dd class="{% if is_menu_active(child) %}layui-this{% end %}">
+                            <a href="{{ child.get('url') or 'javascript:;' }}">
+                                <i class="layui-icon {{ child.get('icon_class', 'layui-icon-app') }}"></i>
+                                <span>{{ child.get('name', '') }}</span>
+                            </a>
+                        </dd>
+                        {% end %}
                     </dl>
+                    {% end %}
                 </li>
-                <li class="layui-nav-item">
-                    <a href="javascript:;">
-                        <i class="fas fa-key"></i>
-                        <span>权限管理</span>
-                    </a>
-                    <dl class="layui-nav-child">
-                        <dd><a href="/admin/functions">功能管理</a></dd>
-                        <dd><a href="/admin/menus">菜单管理</a></dd>
-                        <dd><a href="/admin/roles">角色管理</a></dd>
-                    </dl>
-                </li>
-                <li class="layui-nav-item">
-                    <a href="javascript:;">
-                        <i class="fas fa-search"></i>
-                        <span>数据管理</span>
-                    </a>
-                    <dl class="layui-nav-child">
-                        <dd><a href="/admin/watch">瞭望管理</a></dd>
-                        <dd><a href="/admin/data">数据管理</a></dd>
-                        <dd><a href="/admin/collection">采集管理</a></dd>
-                    </dl>
-                </li>
-                <li class="layui-nav-item">
-                    <a href="javascript:;">
-                        <i class="fas fa-robot"></i>
-                        <span>AI管理</span>
-                    </a>
-                    <dl class="layui-nav-child">
-                        <dd><a href="/admin/digital_employee">数字员工</a></dd>
-                        <dd><a href="/admin/model">模型引擎</a></dd>
-                    </dl>
-                </li>
-                <li class="layui-nav-item">
-                    <a href="/admin/dashboard">
-                        <i class="fas fa-chart-bar"></i>
-                        <span>数智大屏</span>
-                    </a>
-                </li>
-                <li class="layui-nav-item">
-                    <a href="/admin/sentiment">
-                        <i class="fas fa-comments"></i>
-                        <span>舆情大屏</span>
-                    </a>
-                </li>
-                <li class="layui-nav-item">
-                    <a href="/admin/conversations">
-                        <i class="fas fa-comments"></i>
-                        <span>会话管理</span>
-                    </a>
-                </li>
-                <li class="layui-nav-item">
-                    <a href="/admin/messages">
-                        <i class="fas fa-comment-dots"></i>
-                        <span>对话管理</span>
-                    </a>
-                </li>
-                <li class="layui-nav-item">
-                    <a href="/admin/skills">
-                        <i class="fas fa-code"></i>
-                        <span>技能管理</span>
-                    </a>
-                </li>
-                <li class="layui-nav-item">
-                    <a href="/admin/setting">
-                        <i class="fas fa-cog"></i>
-                        <span>系统设置</span>
-                    </a>
-                </li>
+                {% end %}
             </ul>
         </div>
     </div>
@@ -189,6 +135,25 @@
         document.getElementById('logout-btn').addEventListener('click', function() {
             document.getElementById('logout-form').submit();
         });
+        (function() {
+            var nativeFetch = window.fetch;
+            window.fetch = function(input, init) {
+                init = init || {};
+                var method = (init.method || 'GET').toUpperCase();
+                var url = typeof input === 'string' ? input : (input && input.url) || '';
+                var isSameOrigin = !/^https?:\/\//i.test(url) || url.indexOf(location.origin) === 0;
+                if (isSameOrigin && method !== 'GET' && method !== 'HEAD') {
+                    var tokenInput = document.querySelector('input[name="_xsrf"]');
+                    if (tokenInput) {
+                        init.headers = new Headers(init.headers || {});
+                        if (!init.headers.has('X-XSRFToken')) {
+                            init.headers.set('X-XSRFToken', tokenInput.value);
+                        }
+                    }
+                }
+                return nativeFetch(input, init);
+            };
+        })();
     </script>
     {% block script %}{% end %}
     {% block extra_js %}{% end %}
