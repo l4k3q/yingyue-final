@@ -16,7 +16,7 @@ from app.controllers.admin import (
     AdminWatchSourceHandler, AdminDataHandler, AdminCollectionHandler,
     AdminDigitalEmployeeHandler, AdminModelHandler, AdminModelTestHandler,
     AdminDashboardHandler, AdminScreenHandler, AdminSentimentHandler,
-    AdminNoPermissionHandler
+    AdminNoPermissionHandler, AdminSettingHandler
 )
 from app.controllers.screen_api import (
     ScreenSourcesHandler, ScreenKeywordsHandler,
@@ -74,6 +74,7 @@ def webapp():
         (r"/admin/screen", AdminScreenHandler),
         (r"/admin/sentiment", AdminSentimentHandler),
         (r"/admin/no_permission", AdminNoPermissionHandler),
+        (r"/admin/setting", AdminSettingHandler),
 
         # ========== 大屏统计 API 路由 ==========
         (r"/api/screen/sources", ScreenSourcesHandler),

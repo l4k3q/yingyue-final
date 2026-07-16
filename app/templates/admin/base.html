@@ -62,7 +62,7 @@
 <body class="layui-layout layui-layout-admin">
     <div class="layui-header">
         <div class="layui-logo">
-            <i class="fas fa-binoculars mr-2"></i>智能瞭望与问数系统
+            <i class="fas fa-binoculars mr-2"></i>{{ site.get('site_name', '智能瞭望与问数系统') }}
         </div>
         <ul class="layui-nav layui-layout-right">
             <li class="layui-nav-item">
@@ -75,7 +75,7 @@
                 </dl>
             </li>
             <li class="layui-nav-item">
-                <a href="javascript:;">
+                <a href="/admin/setting">
                     <i class="fas fa-cog"></i>
                 </a>
             </li>
@@ -142,6 +142,12 @@
                     <a href="/admin/sentiment">
                         <i class="fas fa-comments"></i>
                         <span>舆情大屏</span>
+                    </a>
+                </li>
+                <li class="layui-nav-item">
+                    <a href="/admin/setting">
+                        <i class="fas fa-cog"></i>
+                        <span>系统设置</span>
                     </a>
                 </li>
             </ul>
