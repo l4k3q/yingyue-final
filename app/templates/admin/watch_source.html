@@ -103,13 +103,13 @@
     </div>
 </div>
 
-<div class="layui-modal" id="sourceModal">
-    <div class="layui-modal-content">
-        <div class="layui-modal-header">
+<div class="layui-modal" id="sourceModal" style="display: none;">
+    <div class="layui-modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="layui-modal-header" style="flex-shrink: 0;">
             <h3 id="modalTitle">新增采集源</h3>
             <button class="layui-close" onclick="closeModal()"></button>
         </div>
-        <div class="layui-modal-body">
+        <div class="layui-modal-body" style="flex: 1; overflow-y: auto;">
             <form class="layui-form" id="sourceForm">
                 <input type="hidden" name="id" id="sourceId">
                 <div class="layui-form-item">
@@ -140,6 +140,15 @@
                     <label class="layui-form-label">描述</label>
                     <div class="layui-input-block">
                         <textarea name="description" id="description" rows="3" placeholder="请输入采集源描述" class="layui-textarea"></textarea>
+                    </div>
+                </div>
+                <div class="layui-form-item">
+                    <label class="layui-form-label">采集配置</label>
+                    <div class="layui-input-block">
+                        <textarea name="collect_config" id="collect_config" rows="4" placeholder='JSON格式，如：{"keyword_param":"q","page_param":"page","page_start":1,"page_step":1,"parser":"sina_news"}' class="layui-textarea"></textarea>
+                        <div class="layui-form-mid" style="padding:0;color:#999;font-size:12px;">
+                            keyword_param: 关键词参数名 | page_param: 分页参数名 | page_start: 起始页 | page_step: 分页步长 | parser: 解析器(baidu_news/sina_news)
+                        </div>
                     </div>
                 </div>
             </form>
@@ -198,6 +207,7 @@ function showAddModal() {
     document.getElementById('request_headers').value = '';
     document.getElementById('params').value = '';
     document.getElementById('description').value = '';
+    document.getElementById('collect_config').value = '';
     document.getElementById('sourceModal').style.display = 'block';
 }
 
@@ -235,28 +245,58 @@ function submitForm() {
     var formData = new FormData(form);
     formData.append('action', action);
     
+    // 获取 XSRF token
+    var xsrfToken = '';
+    var xsrfInput = document.querySelector('input[name="_xsrf"]');
+    if (xsrfInput) {
+        xsrfToken = xsrfInput.value;
+        formData.append('_xsrf', xsrfToken);
+    }
+    
     fetch('/admin/watch/source', {
         method: 'POST',
         body: formData
     }).then(function(response) {
-        return response.json();
-    }).then(function(data) {
-        if (data && data.status === 'error') {
-            alert(data.message);
-        } else {
+        // 检查是否是重定向（成功）
+        if (response.redirected) {
+            window.location.href = '/admin/watch/source';
+            return;
+        }
+        // 尝试解析 JSON
+        return response.text();
+    }).then(function(text) {
+        if (!text) return;
+        try {
+            var data = JSON.parse(text);
+            if (data && data.status === 'error') {
+                alert(data.message);
+            } else {
+                window.location.href = '/admin/watch/source';
+            }
+        } catch (e) {
+            // 解析失败，可能是成功的重定向页面
             window.location.href = '/admin/watch/source';
         }
-    }).catch(function() {
+    }).catch(function(error) {
+        console.error('提交失败:', error);
+        // 即使出错也尝试跳转
         window.location.href = '/admin/watch/source';
     });
 }
 
 function toggleStatus(id, status) {
     if (confirm('确定要' + (status === 1 ? '启用' : '禁用') + '该采集源吗？')) {
+        // 获取 XSRF token
+        var xsrfToken = '';
+        var xsrfInput = document.querySelector('input[name="_xsrf"]');
+        if (xsrfInput) {
+            xsrfToken = xsrfInput.value;
+        }
+        
         fetch('/admin/watch/source', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'action=toggle&id=' + id + '&status=' + status
+            body: 'action=toggle&id=' + id + '&status=' + status + '&_xsrf=' + xsrfToken
         }).then(function() {
             window.location.href = '/admin/watch/source';
         });
@@ -265,10 +305,17 @@ function toggleStatus(id, status) {
 
 function deleteSource(id) {
     if (confirm('确定要删除该采集源吗？')) {
+        // 获取 XSRF token
+        var xsrfToken = '';
+        var xsrfInput = document.querySelector('input[name="_xsrf"]');
+        if (xsrfInput) {
+            xsrfToken = xsrfInput.value;
+        }
+        
         fetch('/admin/watch/source', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'action=delete&id=' + id
+            body: 'action=delete&id=' + id + '&_xsrf=' + xsrfToken
         }).then(function() {
             window.location.href = '/admin/watch/source';
         });
@@ -290,10 +337,18 @@ function closeTestModal() {
 
 function runTest() {
     var keyword = document.getElementById('testKeyword').value;
+    
+    // 获取 XSRF token
+    var xsrfToken = '';
+    var xsrfInput = document.querySelector('input[name="_xsrf"]');
+    if (xsrfInput) {
+        xsrfToken = xsrfInput.value;
+    }
+    
     fetch('/admin/watch/source', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'action=test&id=' + testSourceId + '&keyword=' + encodeURIComponent(keyword)
+        body: 'action=test&id=' + testSourceId + '&keyword=' + encodeURIComponent(keyword) + '&_xsrf=' + xsrfToken
     }).then(function(response) {
         return response.json();
     }).then(function(data) {

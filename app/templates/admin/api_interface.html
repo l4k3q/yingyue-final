@@ -1,0 +1,443 @@
+{% extends "../admin/base.html" %}
+
+{% block body %}
+<div class="admin-card">
+    <div class="layui-row">
+        <div class="layui-col-md8">
+            <h3><i class="fas fa-plug mr-2"></i>接口管理</h3>
+        </div>
+        <div class="layui-col-md4 text-right">
+            <button class="layui-btn layui-btn-primary" onclick="searchInterface()">
+                <i class="fas fa-search"></i> 搜索
+            </button>
+            <button class="layui-btn" onclick="openAddModal()">
+                <i class="fas fa-plus"></i> 新增接口
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="layui-form layui-table-form">
+        <div class="layui-row">
+            <div class="layui-col-md6">
+                <div class="layui-form-item">
+                    <label class="layui-form-label">搜索关键词</label>
+                    <div class="layui-input-block">
+                        <input type="text" id="keyword" value="{{ keyword or '' }}" placeholder="输入名称、URL或描述" class="layui-input">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <table class="layui-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>接口名称</th>
+                <th>URL</th>
+                <th>方法</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for interface in interfaces %}
+            <tr>
+                <td>{{ interface['id'] }}</td>
+                <td>{{ interface['name'] }}</td>
+                <td title="{{ interface['url'] }}">{{ interface['url'][:50] }}{% if len(interface['url']) > 50 %}...{% end %}</td>
+                <td>
+                    <span class="layui-badge {% if interface['method'] == 'GET' %}layui-bg-green{% elif interface['method'] == 'POST' %}layui-bg-blue{% elif interface['method'] == 'PUT' %}layui-bg-orange{% elif interface['method'] == 'DELETE' %}layui-bg-red{% else %}layui-bg-gray{% end %}">
+                        {{ interface['method'] }}
+                    </span>
+                </td>
+                <td>
+                    {% if interface['status'] == 1 %}
+                    <span class="layui-badge layui-bg-green">启用</span>
+                    {% else %}
+                    <span class="layui-badge layui-bg-gray">禁用</span>
+                    {% end %}
+                </td>
+                <td>
+                    <button class="layui-btn layui-btn-xs" onclick="editInterface({{ interface['id'] }})">
+                        <i class="fas fa-edit"></i> 编辑
+                    </button>
+                    {% if interface['status'] == 1 %}
+                    <button class="layui-btn layui-btn-xs layui-btn-warm" onclick="toggleInterface({{ interface['id'] }}, 0)">
+                        <i class="fas fa-ban"></i> 禁用
+                    </button>
+                    {% else %}
+                    <button class="layui-btn layui-btn-xs layui-btn-normal" onclick="toggleInterface({{ interface['id'] }}, 1)">
+                        <i class="fas fa-check"></i> 启用
+                    </button>
+                    {% end %}
+                    <button class="layui-btn layui-btn-xs layui-btn-danger" onclick="deleteInterface({{ interface['id'] }})">
+                        <i class="fas fa-trash"></i> 删除
+                    </button>
+                </td>
+            </tr>
+            {% end %}
+            {% if not interfaces %}
+            <tr>
+                <td colspan="6" class="text-center">暂无数据</td>
+            </tr>
+            {% end %}
+        </tbody>
+    </table>
+    
+    {% if total > 20 %}
+    <div class="layui-row">
+        <div class="layui-col-md12 text-center">
+            <div class="layui-box layui-laypage layui-laypage-default" id="page"></div>
+        </div>
+    </div>
+    {% end %}
+</div>
+
+<div id="interfaceFormContainer" style="display: none;">
+    <form class="layui-form" id="interfaceForm">
+        <input type="hidden" name="id" id="interfaceId">
+        
+        <div class="layui-form-item">
+            <label class="layui-form-label">接口名称 <span style="color: #F56C6C;">*</span></label>
+            <div class="layui-input-block">
+                <input type="text" name="name" id="name" required lay-verify="required" placeholder="请输入接口名称" class="layui-input">
+            </div>
+        </div>
+        
+        <div class="layui-form-item">
+            <label class="layui-form-label">请求方法</label>
+            <div class="layui-input-block">
+                <select name="method" id="method" class="layui-input">
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="DELETE">DELETE</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="layui-form-item">
+            <label class="layui-form-label">接口URL <span style="color: #F56C6C;">*</span></label>
+            <div class="layui-input-block">
+                <input type="text" name="url" id="url" required lay-verify="required" placeholder="https://api.example.com/endpoint" class="layui-input">
+            </div>
+        </div>
+        
+        <div class="layui-form-item">
+            <label class="layui-form-label">Headers（JSON）</label>
+            <div class="layui-input-block">
+                <textarea name="headers" id="headers" placeholder='{"Content-Type": "application/json"}' class="layui-textarea" style="height:100px;">{}</textarea>
+            </div>
+        </div>
+        
+        <div class="layui-form-item">
+            <label class="layui-form-label">Params（JSON）</label>
+            <div class="layui-input-block">
+                <textarea name="params" id="params" placeholder='{"key": "value"}' class="layui-textarea" style="height:100px;">{}</textarea>
+            </div>
+        </div>
+        
+        <div class="layui-form-item">
+            <label class="layui-form-label">Body（JSON）</label>
+            <div class="layui-input-block">
+                <textarea name="body" id="body" placeholder='{"key": "value"}' class="layui-textarea" style="height:100px;">{}</textarea>
+            </div>
+        </div>
+        
+        <div class="layui-form-item">
+            <label class="layui-form-label">Response Mapping</label>
+            <div class="layui-input-block">
+                <textarea name="response_mapping" id="response_mapping" placeholder='{"field": "path.to.value"}' class="layui-textarea" style="height:100px;">{}</textarea>
+            </div>
+        </div>
+        
+        <div class="layui-form-item">
+            <label class="layui-form-label">接口描述</label>
+            <div class="layui-input-block">
+                <textarea name="description" id="description" placeholder="请输入接口描述" class="layui-textarea" style="height:80px;"></textarea>
+            </div>
+        </div>
+        
+        <div class="layui-form-item">
+            <label class="layui-form-label">状态</label>
+            <div class="layui-input-block">
+                <input type="checkbox" name="status" id="status" lay-skin="switch" lay-text="启用|禁用" checked>
+            </div>
+        </div>
+        
+        <div class="layui-form-item">
+            <div class="layui-input-block">
+                <button type="button" class="layui-btn layui-btn-primary" onclick="closeModal()">取消</button>
+                <button type="button" class="layui-btn" onclick="submitForm()">保存</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% end %}
+
+{% block script %}
+<script>
+var layer, laypage;
+var currentModal = null;
+var currentFormData = {};
+
+layui.use(['layer', 'laypage', 'form'], function(){
+    layer = layui.layer;
+    laypage = layui.laypage;
+    var form = layui.form;
+    
+    {% if total > 20 %}
+    laypage.render({
+        elem: 'page',
+        count: {{ total }},
+        curr: {{ page }},
+        limit: 20,
+        jump: function(obj, first){
+            if(!first){
+                window.location.href = '/admin/api_interface?page=' + obj.curr + '&keyword=' + encodeURIComponent(document.getElementById('keyword').value);
+            }
+        }
+    });
+    {% end %}
+});
+
+function searchInterface() {
+    var keyword = document.getElementById('keyword').value;
+    window.location.href = '/admin/api_interface?keyword=' + encodeURIComponent(keyword);
+}
+
+function openAddModal() {
+    currentFormData = {
+        id: '',
+        name: '',
+        url: '',
+        method: 'GET',
+        headers: '{}',
+        params: '{}',
+        body: '{}',
+        response_mapping: '{}',
+        description: '',
+        status: 1
+    };
+    
+    document.getElementById('interfaceId').value = '';
+    document.getElementById('name').value = '';
+    document.getElementById('url').value = '';
+    document.getElementById('method').value = 'GET';
+    document.getElementById('headers').value = '{}';
+    document.getElementById('params').value = '{}';
+    document.getElementById('body').value = '{}';
+    document.getElementById('response_mapping').value = '{}';
+    document.getElementById('description').value = '';
+    document.getElementById('status').checked = true;
+    
+    currentModal = layer.open({
+        type: 1,
+        title: '新增接口',
+        area: ['600px', '700px'],
+        content: document.getElementById('interfaceFormContainer').innerHTML,
+        success: function(layero, index) {
+            layui.form.render();
+            bindFormEvents(layero);
+        }
+    });
+}
+
+function closeModal() {
+    if (currentModal) {
+        layer.close(currentModal);
+        currentModal = null;
+    }
+}
+
+function editInterface(id) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/admin/api_interface');
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.setRequestHeader('X-XSRFToken', getXSRFToken());
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                var data = JSON.parse(xhr.responseText);
+                if (data.status !== 'error') {
+                    currentFormData = {
+                        id: data.id,
+                        name: data.name,
+                        url: data.url,
+                        method: data.method,
+                        headers: data.headers || '{}',
+                        params: data.params || '{}',
+                        body: data.body || '{}',
+                        response_mapping: data.response_mapping || '{}',
+                        description: data.description || '',
+                        status: data.status === 1 ? 1 : 0
+                    };
+                    
+                    document.getElementById('interfaceId').value = data.id;
+                    document.getElementById('name').value = data.name;
+                    document.getElementById('url').value = data.url;
+                    document.getElementById('method').value = data.method;
+                    document.getElementById('headers').value = data.headers || '{}';
+                    document.getElementById('params').value = data.params || '{}';
+                    document.getElementById('body').value = data.body || '{}';
+                    document.getElementById('response_mapping').value = data.response_mapping || '{}';
+                    document.getElementById('description').value = data.description || '';
+                    document.getElementById('status').checked = data.status === 1;
+                    
+                    currentModal = layer.open({
+                        type: 1,
+                        title: '编辑接口',
+                        area: ['600px', '700px'],
+                        content: document.getElementById('interfaceFormContainer').innerHTML,
+                        success: function(layero, index) {
+                            layui.form.render();
+                            bindFormEvents(layero);
+                        }
+                    });
+                }
+            }
+        }
+    };
+    xhr.send('action=get&id=' + id);
+}
+
+function bindFormEvents(layero) {
+    layero.find('input[name="name"]').on('input', function() {
+        currentFormData.name = this.value;
+    });
+    layero.find('input[name="url"]').on('input', function() {
+        currentFormData.url = this.value;
+    });
+    layero.find('select[name="method"]').on('change', function() {
+        currentFormData.method = this.value;
+    });
+    layero.find('textarea[name="headers"]').on('input', function() {
+        currentFormData.headers = this.value;
+    });
+    layero.find('textarea[name="params"]').on('input', function() {
+        currentFormData.params = this.value;
+    });
+    layero.find('textarea[name="body"]').on('input', function() {
+        currentFormData.body = this.value;
+    });
+    layero.find('textarea[name="response_mapping"]').on('input', function() {
+        currentFormData.response_mapping = this.value;
+    });
+    layero.find('textarea[name="description"]').on('input', function() {
+        currentFormData.description = this.value;
+    });
+    layero.find('input[name="status"]').on('change', function() {
+        currentFormData.status = this.checked ? 1 : 0;
+    });
+}
+
+function submitForm() {
+    var id = currentFormData.id || '';
+    var name = currentFormData.name || '';
+    var url = currentFormData.url || '';
+    var method = currentFormData.method || 'GET';
+    var headers = currentFormData.headers || '{}';
+    var params = currentFormData.params || '{}';
+    var body = currentFormData.body || '{}';
+    var response_mapping = currentFormData.response_mapping || '{}';
+    var description = currentFormData.description || '';
+    var status = currentFormData.status || 0;
+    
+    if (!name || !url) {
+        layer.msg('请填写接口名称和URL', {icon: 2});
+        return;
+    }
+    
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/admin/api_interface');
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.setRequestHeader('X-XSRFToken', getXSRFToken());
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                var data = JSON.parse(xhr.responseText);
+                if (data.status === 'success') {
+                    layer.msg(data.message, {icon: 1});
+                    closeModal();
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    layer.msg(data.message, {icon: 2});
+                }
+            }
+        }
+    };
+    
+    var action = id ? 'edit' : 'add';
+    xhr.send('action=' + action + '&id=' + id + '&name=' + encodeURIComponent(name) + 
+             '&url=' + encodeURIComponent(url) + '&method=' + method + 
+             '&headers=' + encodeURIComponent(headers) + '&params=' + encodeURIComponent(params) + 
+             '&body=' + encodeURIComponent(body) + '&response_mapping=' + encodeURIComponent(response_mapping) + 
+             '&description=' + encodeURIComponent(description) + '&status=' + status);
+}
+
+function toggleInterface(id, status) {
+    var action = status === 1 ? '启用' : '禁用';
+    layer.confirm('确定要' + action + '该接口吗？', function(index) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/admin/api_interface');
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.setRequestHeader('X-XSRFToken', getXSRFToken());
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4) {
+                if (xhr.status === 200) {
+                    var data = JSON.parse(xhr.responseText);
+                    if (data.status === 'success') {
+                        layer.msg(data.message, {icon: 1});
+                        layer.close(index);
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 1000);
+                    }
+                }
+            }
+        };
+        xhr.send('action=toggle&id=' + id + '&status=' + status);
+    });
+}
+
+function deleteInterface(id) {
+    layer.confirm('确定要删除该接口吗？', function(index) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/admin/api_interface');
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.setRequestHeader('X-XSRFToken', getXSRFToken());
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4) {
+                if (xhr.status === 200) {
+                    var data = JSON.parse(xhr.responseText);
+                    if (data.status === 'success') {
+                        layer.msg(data.message, {icon: 1});
+                        layer.close(index);
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 1000);
+                    }
+                }
+            }
+        };
+        xhr.send('action=delete&id=' + id);
+    });
+}
+
+function getXSRFToken() {
+    var cookies = document.cookie.split('; ');
+    for (var i = 0; i < cookies.length; i++) {
+        var cookie = cookies[i].split('=');
+        if (cookie[0] === '_xsrf') {
+            return cookie[1];
+        }
+    }
+    return '';
+}
+</script>
+{% end %}

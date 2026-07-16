@@ -1,6 +1,8 @@
 import json
 import re
 import time
+import asyncio
+import base64
 
 import tornado.websocket
 
@@ -55,18 +57,19 @@ class DigitalEmployeeAPIHandler(BaseHandler):
 class ModelListAPIHandler(BaseHandler):
     @tornado.web.authenticated
     def get(self):
-        models, total = AIModelRepository.get_models(page=1, page_size=100)
-        safe_models = []
+        models, _ = AIModelRepository.get_models(page=1, page_size=100)
+        model_list = []
         for m in models:
             if m.get("status") == 1:
-                safe_models.append({
+                model_list.append({
                     "id": m["id"],
                     "name": m["name"],
+                    "model_id": m["model_id"],
                     "description": m.get("description", ""),
-                    "provider": m.get("provider", "openai"),
-                    "is_default": m.get("is_default", 0),
+                    "provider": m.get("provider", ""),
+                    "is_default": m.get("is_default", 0)
                 })
-        self.write(json.dumps({"success": True, "models": safe_models}))
+        self.write(json.dumps({"success": True, "models": model_list}))
 
 
 class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
@@ -78,13 +81,18 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
         user = UserRepository.get_user_by_username(self.username)
         self.user_id = user["id"] if user else 0
         self.conversation_id = None
+        self.selected_model_id = None
 
     def on_message(self, message):
         try:
             data = json.loads(message)
             msg_type = data.get("type")
             msg_data = data.get("data")
-            
+
+            # Store model selection if provided
+            if data.get("model_id") is not None:
+                self.selected_model_id = data.get("model_id")
+
             if msg_type == "message":
                 if isinstance(msg_data, dict):
                     content = msg_data.get("content", "")
@@ -99,8 +107,12 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
                 self.handle_load_conversation(data.get("conversation_id"))
             elif msg_type == "delete_conversation":
                 self.handle_delete_conversation(data.get("conversation_id"))
+            elif msg_type == "set_model":
+                self.selected_model_id = msg_data.get("model_id") if isinstance(msg_data, dict) else None
             elif msg_type == "ping":
                 self.write_message({"type": "pong"})
+            elif msg_type == "gesture":
+                self.handle_gesture(msg_data)
         except json.JSONDecodeError:
             self.write_message({"type": "error", "data": "无效的消息格式"})
 
@@ -120,6 +132,27 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             return
         ConversationRepository.delete_conversation(conversation_id)
         self.write_message({"type": "conversation_deleted", "data": conversation_id})
+
+    def handle_gesture(self, gesture_data):
+        if not gesture_data or not self.user_id:
+            return
+        
+        gesture = gesture_data.get("gesture", "")
+        
+        gesture_mapping = {
+            "scissors": {"employee": "天气", "args": ""},
+            "fist": {"employee": "音乐", "args": ""},
+            "palm": {"employee": "新闻", "args": ""}
+        }
+        
+        if gesture == "thumbs_up":
+            self.write_message({"type": "stream", "data": "生成已停止"})
+            self.write_message({"type": "done"})
+            return
+        
+        if gesture in gesture_mapping:
+            mapping = gesture_mapping[gesture]
+            self.handle_employee_message(mapping["employee"], mapping["args"])
 
     def handle_message(self, content, model_id=None):
         if not content or not self.user_id:
@@ -251,6 +284,7 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             token_count = len(ai_response) // 4
 
             if self.conversation_id:
+                # 注意：handle_message 已写入用户消息，此处只写入助手回复
                 ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
 
             self.write_message({"type": "stream", "data": ai_response})
@@ -426,11 +460,11 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
 
     def handle_relationship_mining(self, content):
         start_time = time.time()
-        
+
         try:
             self.write_message({"type": "typing", "data": "正在挖掘数据关系..."})
-            
-            model = AIModelRepository.get_default_model()
+
+            model = self._get_model()
             if not model:
                 ai_response = "关系挖掘需要配置大模型服务，请联系管理员。"
                 ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
@@ -483,30 +517,110 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             self.write_message({"type": "error", "data": error_msg})
             self.handle_general_chat(content)
 
+    def _get_model(self, model_id=None):
+        """获取模型：优先使用指定的 model_id，其次使用 WebSocket 选中的模型，最后使用默认模型"""
+        model = None
+        if model_id:
+            model = AIModelRepository.get_model_by_id(int(model_id))
+        if not model and self.selected_model_id:
+            model = AIModelRepository.get_model_by_id(int(self.selected_model_id))
+        if not model:
+            model = AIModelRepository.get_default_model()
+        return model
+
+    def _build_chat_messages(self):
+        """构建 messages 数组：system prompt + 对话历史。
+        handle_message() 已先将用户消息写入 DB，所以 get_messages() 已包含当前问题。
+        """
+        SYSTEM_PROMPT = (
+            "你是智能问数助手，一个专业的数据分析和查询助手。"
+            "你可以帮助用户查询数据库、分析数据、生成报表、搜索信息。"
+            "请用中文回复，保持专业、准确、简洁。"
+        )
+
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+        if self.conversation_id:
+            history = ConversationRepository.get_messages(self.conversation_id)
+            MAX_HISTORY = 30
+            if len(history) > MAX_HISTORY:
+                history = history[-MAX_HISTORY:]
+            messages.extend(history)
+
+        return messages
+
     def handle_general_chat(self, content, model_id=None):
         start_time = time.time()
 
         try:
-            ai_response, token_count = self.generate_ai_response(content, model_id=model_id)
+            model = self._get_model(model_id)
+            if not model:
+                fallback = (
+                    f"您好！我是智能问数助手。您的问题是：\"{content}\"\n\n"
+                    f"由于尚未配置大模型服务，我暂时无法为您提供完整的AI分析。"
+                    f"请联系管理员配置模型引擎后，我将能为您提供更强大的智能分析能力！"
+                )
+                if self.conversation_id:
+                    ConversationRepository.add_message(self.conversation_id, "assistant", fallback)
+                self.write_message({"type": "stream", "data": fallback})
+                self.write_message({"type": "done"})
+                return
 
-            ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
+            messages = self._build_chat_messages()
+
+            # 通知前端创建流式消息气泡
+            self.write_message({"type": "stream_start"})
+
+            full_response = ""
+            token_count = 0
+            stream_failed = False
+
+            try:
+                stream_gen = AIModelService.chat_completion(model, messages, stream=True)
+                for chunk in stream_gen:
+                    if "choices" in chunk and chunk["choices"]:
+                        delta = chunk["choices"][0].get("delta", {})
+                        content_piece = delta.get("content", "")
+                        if content_piece:
+                            full_response += content_piece
+                            self.write_message({"type": "stream_chunk", "data": content_piece})
+                    if "usage" in chunk:
+                        token_count = chunk["usage"].get("completion_tokens", 0)
+            except Exception:
+                # 流式失败时回退到非流式
+                stream_failed = True
+                result = AIModelService.chat_completion(model, messages, stream=False)
+                if isinstance(result, dict) and "choices" in result and result["choices"]:
+                    full_response = result["choices"][0]["message"]["content"]
+                    token_count = result.get("usage", {}).get("completion_tokens", 0)
+                    # 使用 stream_chunk 填充已有的流式气泡，避免空消息残留
+                    self.write_message({"type": "stream_chunk", "data": full_response})
+                else:
+                    self.write_message({"type": "error", "data": "AI 响应失败，请稍后重试。"})
+                    self.write_message({"type": "done"})
+                    return
+
+            # 持久化助手回复
+            if self.conversation_id and full_response:
+                ConversationRepository.add_message(self.conversation_id, "assistant", full_response)
+
+            # 更新 token 统计
+            if model.get("id") and token_count:
+                try:
+                    AIModelRepository.update_tokens(model["id"], 0, token_count)
+                except Exception:
+                    pass
 
             elapsed_time = round(time.time() - start_time, 2)
-
-            self.write_message({"type": "stream", "data": ai_response})
-            self.write_message({"type": "metadata", "data": {"time": elapsed_time, "tokens": token_count}})
+            self.write_message({"type": "metadata", "data": {"time": elapsed_time, "tokens": token_count or len(full_response) // 4}})
             self.write_message({"type": "done"})
+
         except Exception as e:
             error_msg = f"AI 响应错误: {str(e)}"
             self.write_message({"type": "error", "data": error_msg})
 
-    def generate_ai_response(self, content, model_id=None):
-        # 优先使用指定模型，否则使用默认模型
-        model = None
-        if model_id:
-            model = AIModelRepository.get_model_by_id(int(model_id))
-        if not model:
-            model = AIModelRepository.get_default_model()
+    def generate_ai_response(self, content):
+        model = self._get_model()
         
         if not model:
             return f"您好！我是智能问数助手。您的问题是：\"{content}\"\n\n由于尚未配置大模型服务，我暂时无法为您提供完整的AI分析。请联系管理员配置模型引擎后，我将能为您提供更强大的智能分析能力！", 0
@@ -546,3 +660,31 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
 
     def check_origin(self, origin):
         return True
+
+
+class TTSHandler(BaseHandler):
+    @tornado.web.authenticated
+    async def post(self):
+        try:
+            data = json.loads(self.request.body)
+            text = data.get("text", "")
+            
+            if not text:
+                self.write(json.dumps({"success": False, "message": "请输入要合成的文本"}))
+                return
+
+            try:
+                import edge_tts
+                communicate = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural")
+                audio_data = b""
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_data += chunk["data"]
+                
+                audio_base64 = base64.b64encode(audio_data).decode("utf-8")
+                self.write(json.dumps({"success": True, "audio": audio_base64}))
+            except Exception as e:
+                print(f"[TTS] 语音合成失败: {e}", flush=True)
+                self.write(json.dumps({"success": False, "message": f"语音合成失败: {str(e)}"}))
+        except json.JSONDecodeError:
+            self.write(json.dumps({"success": False, "message": "请求格式错误"}))
