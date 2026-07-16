@@ -1,0 +1,423 @@
+{% extends "../admin/base.html" %}
+
+{% block title %}对话管理{% end %}
+
+{% block extra_css %}
+<style>
+    .filter-section {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    .batch-actions {
+        margin-bottom: 15px;
+    }
+    .role-badge {
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+    }
+    .role-user { background: #cce5ff; color: #004085; }
+    .role-assistant { background: #d4edda; color: #155724; }
+    .msg-type-badge {
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+        background: #e2e3e5;
+        color: #383d41;
+    }
+    .content-preview {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .modal-content {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    .message-item {
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        background: #f8f9fa;
+    }
+    .message-item.user {
+        background: #e7f3ff;
+        border-left: 3px solid #007bff;
+    }
+    .message-item.assistant {
+        background: #e8f5e9;
+        border-left: 3px solid #28a745;
+    }
+    .message-meta {
+        font-size: 12px;
+        color: #6c757d;
+        margin-bottom: 8px;
+    }
+    .message-content {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+</style>
+{% end %}
+
+{% block body %}
+<div style="display:none;">{% module xsrf_form_html() %}</div>
+<div class="layui-fluid">
+    <div class="layui-card">
+        <div class="layui-card-header">
+            <i class="fas fa-comment-dots"></i> 对话管理
+        </div>
+        <div class="layui-card-body">
+            <!-- 筛选区域 -->
+            <div class="filter-section">
+                <form class="layui-form" action="/admin/messages" method="get">
+                    <div class="layui-form-item">
+                        <div class="layui-inline">
+                            <label class="layui-form-label">会话ID</label>
+                            <div class="layui-input-inline">
+                                <input type="text" name="conversation_id" value="{{ filters.conversation_id }}" class="layui-input" placeholder="输入会话ID">
+                            </div>
+                        </div>
+                        <div class="layui-inline">
+                            <label class="layui-form-label">用户ID</label>
+                            <div class="layui-input-inline">
+                                <select name="user_id">
+                                    <option value="">全部用户</option>
+                                    {% for user in users %}
+                                    <option value="{{ user.id }}" {% if filters.user_id == user.id %}selected{% end %}>
+                                        {{ user.username }} (ID:{{ user.id }})
+                                    </option>
+                                    {% end %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="layui-inline">
+                            <label class="layui-form-label">开始日期</label>
+                            <div class="layui-input-inline">
+                                <input type="date" name="start_date" value="{{ filters.start_date }}" class="layui-input">
+                            </div>
+                        </div>
+                        <div class="layui-inline">
+                            <label class="layui-form-label">结束日期</label>
+                            <div class="layui-input-inline">
+                                <input type="date" name="end_date" value="{{ filters.end_date }}" class="layui-input">
+                            </div>
+                        </div>
+                        <div class="layui-inline">
+                            <label class="layui-form-label">关键词</label>
+                            <div class="layui-input-inline">
+                                <input type="text" name="keyword" value="{{ filters.keyword }}" class="layui-input" placeholder="搜索消息内容">
+                            </div>
+                        </div>
+                        <div class="layui-inline">
+                            <button class="layui-btn" lay-submit>
+                                <i class="fas fa-search"></i> 搜索
+                            </button>
+                            <a href="/admin/messages" class="layui-btn layui-btn-primary">
+                                <i class="fas fa-redo"></i> 重置
+                            </a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 批量操作 -->
+            <div class="batch-actions">
+                <button class="layui-btn layui-btn-danger" id="batchDelete">
+                    <i class="fas fa-trash"></i> 批量删除
+                </button>
+                <button class="layui-btn layui-btn-warm" id="clearConversation" {% if not filters.conversation_id %}disabled{% end %}>
+                    <i class="fas fa-eraser"></i> 清空当前会话
+                </button>
+                <button class="layui-btn layui-btn-normal" id="exportBtn">
+                    <i class="fas fa-file-export"></i> 导出Excel
+                </button>
+            </div>
+
+            <!-- 消息列表 -->
+            <table class="layui-table" lay-skin="line">
+                <colgroup>
+                    <col width="50">
+                    <col width="80">
+                    <col width="80">
+                    <col width="100">
+                    <col width="80">
+                    <col>
+                    <col width="100">
+                    <col width="80">
+                    <col width="150">
+                    <col width="150">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="checkAll"></th>
+                        <th>ID</th>
+                        <th>会话ID</th>
+                        <th>用户</th>
+                        <th>角色</th>
+                        <th>内容</th>
+                        <th>消息类型</th>
+                        <th>序号</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for msg in messages %}
+                    <tr>
+                        <td><input type="checkbox" class="msg-check" value="{{ msg.id }}"></td>
+                        <td>{{ msg.id }}</td>
+                        <td>{{ msg.conversation_id }}</td>
+                        <td>{{ msg.username or '未知用户' }}</td>
+                        <td>
+                            {% if msg.role == 'user' %}
+                            <span class="role-badge role-user">用户</span>
+                            {% elif msg.role == 'assistant' %}
+                            <span class="role-badge role-assistant">AI</span>
+                            {% else %}
+                            <span class="role-badge">{{ msg.role }}</span>
+                            {% end %}
+                        </td>
+                        <td>
+                            <div class="content-preview" title="{{ msg.content or '' }}">
+                                {{ (msg.content or '')[:100] }}{% if len(msg.content or '') > 100 %}...{% end %}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="msg-type-badge">{{ msg.msg_type }}</span>
+                        </td>
+                        <td>{{ msg.msg_index }}</td>
+                        <td>{{ msg.created_at }}</td>
+                        <td>
+                            <button class="layui-btn layui-btn-xs layui-btn-normal view-btn" data-id="{{ msg.id }}" data-conversation="{{ msg.conversation_id }}">
+                                <i class="fas fa-eye"></i> 查看
+                            </button>
+                            <button class="layui-btn layui-btn-xs layui-btn-danger delete-btn" data-id="{{ msg.id }}">
+                                <i class="fas fa-trash"></i> 删除
+                            </button>
+                        </td>
+                    </tr>
+                    {% end %}
+                </tbody>
+            </table>
+
+            <!-- 分页 -->
+            {% if total > 50 %}
+            <div class="pagination-container">
+                <div class="layui-laypage">
+                    {% set pages = (total + 49) // 50 %}
+                    {% if page > 1 %}
+                    <a href="/admin/messages?page={{ page-1 }}&conversation_id={{ filters.conversation_id }}&user_id={{ filters.user_id }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}&keyword={{ filters.keyword }}">上一页</a>
+                    {% end %}
+                    {% set start_p = max(1, page - 2) %}
+                    {% set end_p = min(pages, page + 2) %}
+                    {% for p in range(start_p, end_p + 1) %}
+                    {% if p == page %}
+                    <span class="layui-laypage-curr"><em>{{ p }}</em></span>
+                    {% else %}
+                    <a href="/admin/messages?page={{ p }}&conversation_id={{ filters.conversation_id }}&user_id={{ filters.user_id }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}&keyword={{ filters.keyword }}">{{ p }}</a>
+                    {% end %}
+                    {% end %}
+                    {% if page < pages %}
+                    <a href="/admin/messages?page={{ page+1 }}&conversation_id={{ filters.conversation_id }}&user_id={{ filters.user_id }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}&keyword={{ filters.keyword }}">下一页</a>
+                    {% end %}
+                    <span>共 {{ total }} 条</span>
+                </div>
+            </div>
+            {% end %}
+        </div>
+    </div>
+</div>
+
+<!-- 对话详情弹窗 -->
+<div id="messageModal" style="display: none;">
+    <div class="modal-content" id="modalContent">
+        加载中...
+    </div>
+</div>
+{% end %}
+
+{% block extra_js %}
+<script>
+function getXsrfToken() {
+    var inputs = document.querySelectorAll('input[name="_xsrf"]');
+    return inputs.length > 0 ? inputs[0].value : '';
+}
+
+layui.use(['layer', 'element'], function(){
+    var layer = layui.layer;
+    var $ = layui.$;
+
+    // 全选
+    $('#checkAll').on('click', function(){
+        $('.msg-check').prop('checked', this.checked);
+    });
+
+    function postAction(params, callback) {
+        var body = 'action=' + encodeURIComponent(params.action);
+        for (var key in params) {
+            if (key !== 'action') {
+                body += '&' + key + '=' + encodeURIComponent(params[key]);
+            }
+        }
+        body += '&_xsrf=' + encodeURIComponent(getXsrfToken());
+        fetch('/admin/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-XSRFToken': getXsrfToken()
+            },
+            body: body
+        }).then(function(r) { return r.json(); }).then(callback);
+    }
+
+    // 查看详情
+    $('.view-btn').on('click', function(){
+        var conversationId = $(this).data('conversation');
+        loadConversationDetail(conversationId);
+    });
+
+    // 加载对话详情（通过 admin POST 接口获取）
+    function loadConversationDetail(conversationId) {
+        layer.open({
+            type: 1,
+            title: '会话详情 - ID: ' + conversationId,
+            area: ['800px', '600px'],
+            content: '<div class="modal-content" id="modalContent">加载中...</div>',
+            success: function(layero){
+                // 使用 admin POST 接口获取消息（绕过前端auth限制）
+                var body = 'action=get_messages&conversation_id=' + conversationId + '&_xsrf=' + encodeURIComponent(getXsrfToken());
+                fetch('/admin/messages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-XSRFToken': getXsrfToken()
+                    },
+                    body: body
+                }).then(function(r) { return r.json(); }).then(function(res) {
+                    if(res.status === 'success' && res.messages && res.messages.length > 0) {
+                        var html = '';
+                        res.messages.forEach(function(msg) {
+                            var roleClass = msg.role === 'user' ? 'user' : 'assistant';
+                            var roleName = msg.role === 'user' ? '用户' : 'AI助手';
+                            html += '<div class="message-item ' + roleClass + '">';
+                            html += '<div class="message-meta">';
+                            html += '<strong>' + roleName + '</strong> | ';
+                            html += '类型: ' + (msg.msg_type || 'text') + ' | ';
+                            html += '序号: ' + msg.msg_index + ' | ';
+                            html += '时间: ' + msg.created_at;
+                            html += '</div>';
+                            html += '<div class="message-content">' + escapeHtml(msg.content || '') + '</div>';
+                            html += '</div>';
+                        });
+                        $('#modalContent', layero).html(html);
+                    } else {
+                        $('#modalContent', layero).html('<p style="text-align:center;color:#999;">暂无消息</p>');
+                    }
+                }).catch(function() {
+                    $('#modalContent', layero).html('<p style="text-align:center;color:#999;">加载失败</p>');
+                });
+            }
+        });
+    }
+
+    // HTML转义
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // 单个删除
+    $('.delete-btn').on('click', function(){
+        var id = $(this).data('id');
+        layer.confirm('确定要删除这条消息吗？', {icon: 3}, function(index){
+            postAction({action: 'delete', message_id: id}, function(res){
+                if(res.status === 'success'){
+                    layer.msg('删除成功', {icon: 1});
+                    setTimeout(function(){ location.reload(); }, 1000);
+                } else {
+                    layer.msg(res.message || '操作失败', {icon: 2});
+                }
+            });
+            layer.close(index);
+        });
+    });
+
+    // 批量删除
+    $('#batchDelete').on('click', function(){
+        var ids = [];
+        $('.msg-check:checked').each(function(){
+            ids.push($(this).val());
+        });
+        if(ids.length === 0){
+            layer.msg('请至少选择一条消息', {icon: 0});
+            return;
+        }
+        layer.confirm('确定要批量删除选中的 ' + ids.length + ' 条消息吗？', {icon: 3}, function(index){
+            postAction({action: 'batch_delete', ids: JSON.stringify(ids)}, function(res){
+                if(res.status === 'success'){
+                    layer.msg(res.message, {icon: 1});
+                    setTimeout(function(){ location.reload(); }, 1000);
+                } else {
+                    layer.msg(res.message || '操作失败', {icon: 2});
+                }
+            });
+            layer.close(index);
+        });
+    });
+
+    // 清空会话
+    $('#clearConversation').on('click', function(){
+        var conversationId = '{{ filters.conversation_id }}';
+        if(!conversationId) {
+            layer.msg('请先筛选到具体会话', {icon: 0});
+            return;
+        }
+        layer.confirm('确定要清空该会话的所有消息吗？此操作不可恢复！', {icon: 3}, function(index){
+            postAction({action: 'clear_conversation', conversation_id: conversationId}, function(res){
+                if(res.status === 'success'){
+                    layer.msg(res.message, {icon: 1});
+                    setTimeout(function(){ location.reload(); }, 1000);
+                } else {
+                    layer.msg(res.message || '操作失败', {icon: 2});
+                }
+            });
+            layer.close(index);
+        });
+    });
+
+    // 导出Excel
+    $('#exportBtn').on('click', function(){
+        var params = {
+            action: 'export',
+            conversation_id: '{{ filters.conversation_id }}',
+            user_id: '{{ filters.user_id }}',
+            start_date: '{{ filters.start_date }}',
+            end_date: '{{ filters.end_date }}',
+            _xsrf: getXsrfToken()
+        };
+
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/admin/messages';
+        form.style.display = 'none';
+        for(var key in params) {
+            if(params[key] || key === 'action' || key === '_xsrf') {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = params[key];
+                form.appendChild(input);
+            }
+        }
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+    });
+});
+</script>
+{% end %}

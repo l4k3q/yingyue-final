@@ -212,6 +212,9 @@ def init_db():
                 user_id INTEGER NOT NULL,
                 title TEXT DEFAULT '',
                 messages TEXT DEFAULT '',
+                business_type INTEGER NOT NULL DEFAULT 0,
+                employee_id INTEGER DEFAULT 0,
+                archive_status INTEGER NOT NULL DEFAULT 0,
                 status INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
@@ -219,6 +222,67 @@ def init_db():
             )
             """
         )
+        # 为 conversations 表新增字段（兼容已有数据库）
+        for col_sql in [
+            "ALTER TABLE conversations ADD COLUMN business_type INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE conversations ADD COLUMN employee_id INTEGER DEFAULT 0",
+            "ALTER TABLE conversations ADD COLUMN archive_status INTEGER NOT NULL DEFAULT 0",
+        ]:
+            try:
+                conn.execute(col_sql)
+            except sqlite3.OperationalError:
+                pass
+        # 创建独立的 messages 表
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS messages(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                msg_type TEXT NOT NULL DEFAULT 'text',
+                msg_index INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS skills(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                category INTEGER NOT NULL DEFAULT 1,
+                status INTEGER NOT NULL DEFAULT 1,
+                description TEXT DEFAULT '',
+                config_json TEXT DEFAULT '{}',
+                enhancement_config TEXT DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS employee_skills(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                employee_id INTEGER NOT NULL,
+                skill_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                UNIQUE(employee_id, skill_id),
+                FOREIGN KEY (employee_id) REFERENCES digital_employees(id),
+                FOREIGN KEY (skill_id) REFERENCES skills(id)
+            )
+            """
+        )
+        # 为 skills 表新增字段（兼容已有数据库）
+        try:
+            conn.execute("ALTER TABLE skills ADD COLUMN enhancement_config TEXT DEFAULT '{}'")
+        except sqlite3.OperationalError:
+            pass
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS system_settings(
@@ -328,6 +392,26 @@ def init_db():
             func_id = conn.execute("SELECT id FROM functions WHERE url='/admin/setting'").fetchone()[0]
             conn.execute("INSERT OR IGNORE INTO role_functions (role_id, function_id) VALUES (2, ?)", (func_id,))
 
+        # 确保会话管理和对话管理菜单存在
+        cursor = conn.execute("SELECT COUNT(*) FROM functions WHERE url='/admin/conversations'")
+        if cursor.fetchone()[0] == 0:
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('会话管理', 'icon-chat', '/admin/conversations', 0, 9)")
+            func_id = conn.execute("SELECT id FROM functions WHERE url='/admin/conversations'").fetchone()[0]
+            conn.execute("INSERT OR IGNORE INTO role_functions (role_id, function_id) VALUES (2, ?)", (func_id,))
+
+        cursor = conn.execute("SELECT COUNT(*) FROM functions WHERE url='/admin/messages'")
+        if cursor.fetchone()[0] == 0:
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('对话管理', 'icon-message', '/admin/messages', 0, 10)")
+            func_id = conn.execute("SELECT id FROM functions WHERE url='/admin/messages'").fetchone()[0]
+            conn.execute("INSERT OR IGNORE INTO role_functions (role_id, function_id) VALUES (2, ?)", (func_id,))
+
+        # 确保技能管理菜单存在
+        cursor = conn.execute("SELECT COUNT(*) FROM functions WHERE url='/admin/skills'")
+        if cursor.fetchone()[0] == 0:
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('技能管理', 'icon-code', '/admin/skills', 0, 11)")
+            func_id = conn.execute("SELECT id FROM functions WHERE url='/admin/skills'").fetchone()[0]
+            conn.execute("INSERT OR IGNORE INTO role_functions (role_id, function_id) VALUES (2, ?)", (func_id,))
+
         cursor = conn.execute("SELECT COUNT(*) FROM watch_sources")
         count = cursor.fetchone()[0]
         if count == 0:
@@ -435,3 +519,10 @@ def init_db():
                 VALUES (?,?,?,?,?,?)""",
                 ("采集专员", "collector", 1, 1, "你是采集专员，负责网页内容深度采集。URL: {url}", "网页内容深度采集")
             )
+
+        # 初始化默认技能数据
+        try:
+            from app.models.skills_enhancement import seed_default_skills
+            seed_default_skills()
+        except Exception:
+            pass

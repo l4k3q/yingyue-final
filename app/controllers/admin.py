@@ -1,6 +1,9 @@
 import json
 import os
 import shutil
+import io
+import csv
+from types import SimpleNamespace
 import tornado.web
 
 from app.models.admin import AdminRepository
@@ -12,6 +15,18 @@ from app.models.model import AIModelRepository, AIModelService
 from app.models.warehouse import DataWarehouseRepository, DeepCollectTaskRepository, DeepCollectService
 from app.models.digital_employee import DigitalEmployeeRepository, DigitalEmployeeService
 from app.models.setting import SystemSettingRepository
+from app.models.conversations import ConversationRepository, MessageRepository
+from app.models.skills import SkillRepository
+
+
+def _to_obj(d: dict) -> SimpleNamespace:
+    """Convert dict to object for Tornado template dot-access"""
+    return SimpleNamespace(**d) if d else None
+
+
+def _to_obj_list(items: list) -> list:
+    """Convert list of dicts to list of SimpleNamespace objects"""
+    return [SimpleNamespace(**d) for d in items] if items else []
 
 
 class AdminBaseHandler(tornado.web.RequestHandler):
@@ -280,6 +295,8 @@ class AdminWatchHandler(AdminBaseHandler):
             self.render("admin/watch.html", title="瞭望采集", sources=sources, records=processed_records)
     
     def _process_records(self, records):
+        from app.models.skills_enhancement import SkillsEnhancementEngine
+
         processed = []
         for record in records:
             articles = []
@@ -289,6 +306,13 @@ class AdminWatchHandler(AdminBaseHandler):
                 except:
                     articles = []
             if isinstance(articles, list):
+                # 应用瞭望采集类技能增强（数据清洗）
+                if articles:
+                    enhancement_result = SkillsEnhancementEngine.run_enhancements_by_category(
+                        category=1,  # 瞭望采集类
+                        data=articles
+                    )
+                    articles = enhancement_result.get("enhanced", articles)
                 record["articles"] = articles
             else:
                 record["articles"] = []
@@ -729,5 +753,374 @@ class AdminSettingHandler(AdminBaseHandler):
         elif action == "reset":
             # For reset, we could re-seed but simplest is to redirect back
             self.write(json.dumps({"status": "success", "message": "已重置"}))
+        else:
+            self.write(json.dumps({"status": "error", "message": "未知操作"}))
+
+
+class AdminConversationHandler(AdminBaseHandler):
+    """会话管理"""
+    
+    def get(self):
+        page = int(self.get_query_argument("page", 1))
+        user_id = self.get_query_argument("user_id", None)
+        business_type = self.get_query_argument("business_type", None)
+        archive_status = self.get_query_argument("archive_status", None)
+        status = self.get_query_argument("status", None)
+        start_date = self.get_query_argument("start_date", None)
+        end_date = self.get_query_argument("end_date", None)
+        keyword = self.get_query_argument("keyword", None)
+        
+        # 转换参数类型
+        user_id = int(user_id) if user_id else None
+        business_type = int(business_type) if business_type else None
+        archive_status = int(archive_status) if archive_status else None
+        status = int(status) if status else None
+        
+        # 获取会话列表
+        conversations, total = ConversationRepository.get_all_conversations_admin(
+            page=page,
+            user_id=user_id,
+            business_type=business_type,
+            archive_status=archive_status,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+            keyword=keyword
+        )
+        
+        # 获取统计数据
+        stats = ConversationRepository.get_conversation_stats()
+        
+        # 获取用户列表（用于筛选下拉）
+        users, _ = UserRepository.get_users(page=1, page_size=1000)
+        
+        self.render(
+            "admin/conversations.html",
+            title="会话管理",
+            conversations=conversations,
+            total=total,
+            page=page,
+            stats=stats,
+            users=users,
+            filters=SimpleNamespace(
+                user_id=user_id or "",
+                business_type=business_type if business_type is not None else "",
+                archive_status=archive_status if archive_status is not None else "",
+                status=status if status is not None else "",
+                start_date=start_date or "",
+                end_date=end_date or "",
+                keyword=keyword or ""
+            )
+        )
+    
+    def post(self):
+        action = self.get_body_argument("action", "")
+        
+        if action == "archive":
+            conversation_id = int(self.get_body_argument("conversation_id", 0))
+            ConversationRepository.archive_conversation(conversation_id)
+            self.write(json.dumps({"status": "success", "message": "会话已归档"}))
+        
+        elif action == "unarchive":
+            conversation_id = int(self.get_body_argument("conversation_id", 0))
+            ConversationRepository.unarchive_conversation(conversation_id)
+            self.write(json.dumps({"status": "success", "message": "会话已取消归档"}))
+        
+        elif action == "delete":
+            conversation_id = int(self.get_body_argument("conversation_id", 0))
+            ConversationRepository.delete_conversation(conversation_id)
+            self.write(json.dumps({"status": "success", "message": "会话已删除"}))
+        
+        elif action == "batch_archive":
+            ids_json = self.get_body_argument("ids", "[]")
+            ids = json.loads(ids_json)
+            ConversationRepository.batch_archive_conversations(ids)
+            self.write(json.dumps({"status": "success", "message": f"已归档 {len(ids)} 个会话"}))
+        
+        elif action == "batch_delete":
+            ids_json = self.get_body_argument("ids", "[]")
+            ids = json.loads(ids_json)
+            ConversationRepository.batch_delete_conversations(ids)
+            self.write(json.dumps({"status": "success", "message": f"已删除 {len(ids)} 个会话"}))
+        
+        else:
+            self.write(json.dumps({"status": "error", "message": "未知操作"}))
+
+
+class AdminMessageHandler(AdminBaseHandler):
+    """对话管理"""
+    
+    def get(self):
+        page = int(self.get_query_argument("page", 1))
+        conversation_id = self.get_query_argument("conversation_id", None)
+        user_id = self.get_query_argument("user_id", None)
+        start_date = self.get_query_argument("start_date", None)
+        end_date = self.get_query_argument("end_date", None)
+        keyword = self.get_query_argument("keyword", None)
+        
+        # 转换参数类型
+        conversation_id = int(conversation_id) if conversation_id else None
+        user_id = int(user_id) if user_id else None
+        
+        # 获取消息列表
+        messages, total = MessageRepository.get_all_messages_admin(
+            page=page,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            start_date=start_date,
+            end_date=end_date,
+            keyword=keyword
+        )
+        
+        # 获取用户列表（用于筛选下拉）
+        users, _ = UserRepository.get_users(page=1, page_size=1000)
+        
+        self.render(
+            "admin/messages.html",
+            title="对话管理",
+            messages=messages,
+            total=total,
+            page=page,
+            users=users,
+            filters=SimpleNamespace(
+                conversation_id=conversation_id or "",
+                user_id=user_id or "",
+                start_date=start_date or "",
+                end_date=end_date or "",
+                keyword=keyword or ""
+            )
+        )
+    
+    def post(self):
+        action = self.get_body_argument("action", "")
+
+        if action == "get_messages":
+            conversation_id = int(self.get_body_argument("conversation_id", 0))
+            messages = ConversationRepository.get_messages(conversation_id)
+            self.write(json.dumps({"status": "success", "messages": messages}))
+
+        elif action == "delete":
+            message_id = int(self.get_body_argument("message_id", 0))
+            MessageRepository.delete_message(message_id)
+            self.write(json.dumps({"status": "success", "message": "消息已删除"}))
+        
+        elif action == "batch_delete":
+            ids_json = self.get_body_argument("ids", "[]")
+            ids = json.loads(ids_json)
+            MessageRepository.batch_delete_messages(ids)
+            self.write(json.dumps({"status": "success", "message": f"已删除 {len(ids)} 条消息"}))
+        
+        elif action == "clear_conversation":
+            conversation_id = int(self.get_body_argument("conversation_id", 0))
+            MessageRepository.clear_conversation_messages(conversation_id)
+            self.write(json.dumps({"status": "success", "message": "会话消息已清空"}))
+        
+        elif action == "export":
+            conversation_id = self.get_body_argument("conversation_id", None)
+            user_id = self.get_body_argument("user_id", None)
+            start_date = self.get_body_argument("start_date", None)
+            end_date = self.get_body_argument("end_date", None)
+            
+            conversation_id = int(conversation_id) if conversation_id else None
+            user_id = int(user_id) if user_id else None
+            
+            messages = MessageRepository.export_messages_to_excel(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            # 生成 CSV 内容
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["消息ID", "会话ID", "会话标题", "用户ID", "用户名", "角色", "内容", "消息类型", "序号", "创建时间"])
+            for msg in messages:
+                writer.writerow([
+                    msg.get("id", ""),
+                    msg.get("conversation_id", ""),
+                    msg.get("conversation_title", ""),
+                    msg.get("user_id", ""),
+                    msg.get("username", ""),
+                    msg.get("role", ""),
+                    msg.get("content", ""),
+                    msg.get("msg_type", ""),
+                    msg.get("msg_index", ""),
+                    msg.get("created_at", "")
+                ])
+            
+            csv_content = output.getvalue()
+            output.close()
+            
+            # 添加 BOM 以支持 Excel 打开中文
+            csv_bytes = ("\ufeff" + csv_content).encode("utf-8")
+            
+            self.set_header("Content-Type", "text/csv; charset=utf-8")
+            self.set_header("Content-Disposition", "attachment; filename=messages_export.csv")
+            self.write(csv_bytes)
+            return
+
+        else:
+            self.write(json.dumps({"status": "error", "message": "未知操作"}))
+
+
+class AdminSkillHandler(AdminBaseHandler):
+    """技能管理"""
+
+    def get(self):
+        page = int(self.get_query_argument("page", 1))
+        category = self.get_query_argument("category", None)
+        status = self.get_query_argument("status", None)
+        keyword = self.get_query_argument("keyword", None)
+        employee_id = self.get_query_argument("employee_id", None)
+
+        category = int(category) if category else None
+        status = int(status) if status else None
+        employee_id = int(employee_id) if employee_id else None
+
+        skills, total = SkillRepository.get_skills(
+            page=page,
+            category=category,
+            status=status,
+            keyword=keyword,
+            employee_id=employee_id
+        )
+
+        from app.models.digital_employee import DigitalEmployeeRepository
+        employees, _ = DigitalEmployeeRepository.get_employees(page=1, page_size=1000)
+
+        categories = [
+            SimpleNamespace(value=1, label="瞭望采集"),
+            SimpleNamespace(value=2, label="问数分析"),
+            SimpleNamespace(value=3, label="可视化大屏"),
+        ]
+
+        self.render(
+            "admin/skills.html",
+            title="技能管理",
+            skills=_to_obj_list(skills),
+            total=total,
+            page=page,
+            employees=_to_obj_list(employees),
+            categories=categories,
+            filters=SimpleNamespace(
+                category=category if category is not None else "",
+                status=status if status is not None else "",
+                keyword=keyword or "",
+                employee_id=employee_id or ""
+            )
+        )
+
+    def post(self):
+        action = self.get_body_argument("action", "")
+
+        if action == "get":
+            skill_id = int(self.get_body_argument("id", 0))
+            skill = SkillRepository.get_skill_detail(skill_id)
+            if skill:
+                self.write(json.dumps({"status": "success", "skill": skill}))
+            else:
+                self.write(json.dumps({"status": "error", "message": "技能不存在"}))
+
+        elif action == "add":
+            name = self.get_body_argument("name", "").strip()
+            category = int(self.get_body_argument("category", 1))
+            description = self.get_body_argument("description", "").strip()
+            config_json = self.get_body_argument("config_json", "{}").strip()
+            enhancement_config = self.get_body_argument("enhancement_config", "{}").strip()
+
+            if not name:
+                self.write(json.dumps({"status": "error", "message": "技能名称不能为空"}))
+                return
+            if category not in (1, 2, 3):
+                self.write(json.dumps({"status": "error", "message": "无效的技能分类"}))
+                return
+
+            for field_name, val in [("config_json", config_json), ("enhancement_config", enhancement_config)]:
+                try:
+                    json.loads(val)
+                except json.JSONDecodeError as e:
+                    self.write(json.dumps({"status": "error", "message": f"{field_name} 格式错误: {str(e)}"}))
+                    return
+
+            skill_id = SkillRepository.create_skill(name, category, description, config_json, enhancement_config)
+            if skill_id:
+                self.write(json.dumps({"status": "success", "message": "技能创建成功", "id": skill_id}))
+            else:
+                self.write(json.dumps({"status": "error", "message": "创建失败"}))
+
+        elif action == "edit":
+            skill_id = int(self.get_body_argument("id", 0))
+            name = self.get_body_argument("name", "").strip()
+            category = self.get_body_argument("category", None)
+            description = self.get_body_argument("description", None)
+            config_json = self.get_body_argument("config_json", None)
+            enhancement_config = self.get_body_argument("enhancement_config", None)
+
+            category = int(category) if category else None
+
+            if category is not None and category not in (1, 2, 3):
+                self.write(json.dumps({"status": "error", "message": "无效的技能分类"}))
+                return
+
+            for field_name, val in [("config_json", config_json), ("enhancement_config", enhancement_config)]:
+                if val is not None:
+                    try:
+                        json.loads(val)
+                    except json.JSONDecodeError as e:
+                        self.write(json.dumps({"status": "error", "message": f"{field_name} 格式错误: {str(e)}"}))
+                        return
+
+            if SkillRepository.update_skill(skill_id, name=name or None, category=category,
+                                             description=description, config_json=config_json,
+                                             enhancement_config=enhancement_config):
+                self.write(json.dumps({"status": "success", "message": "技能更新成功"}))
+            else:
+                self.write(json.dumps({"status": "error", "message": "更新失败"}))
+
+        elif action == "delete":
+            skill_id = int(self.get_body_argument("id", 0))
+            SkillRepository.delete_skill(skill_id)
+            self.write(json.dumps({"status": "success", "message": "技能已删除（关联关系已解绑）"}))
+
+        elif action == "toggle":
+            skill_id = int(self.get_body_argument("id", 0))
+            status = int(self.get_body_argument("status", 0))
+            SkillRepository.toggle_status(skill_id, status)
+            self.write(json.dumps({"status": "success", "message": "状态已更新"}))
+
+        elif action == "batch_assign":
+            skill_id = int(self.get_body_argument("id", 0))
+            ids_json = self.get_body_argument("employee_ids", "[]")
+            employee_ids = json.loads(ids_json)
+
+            if not isinstance(employee_ids, list) or not employee_ids:
+                self.write(json.dumps({"status": "error", "message": "请选择至少一个数字员工"}))
+                return
+
+            from app.models.digital_employee import DigitalEmployeeRepository
+            invalid_ids = []
+            for eid in employee_ids:
+                emp = DigitalEmployeeRepository.get_employee_by_id(eid)
+                if not emp:
+                    invalid_ids.append(eid)
+
+            if invalid_ids:
+                self.write(json.dumps({"status": "error", "message": f"数字员工不存在: {invalid_ids}"}))
+                return
+
+            SkillRepository.batch_assign_employees(skill_id, employee_ids)
+            self.write(json.dumps({"status": "success", "message": f"已分配 {len(employee_ids)} 名数字员工"}))
+
+        elif action == "batch_disable":
+            ids_json = self.get_body_argument("ids", "[]")
+            ids = json.loads(ids_json)
+            if not ids:
+                self.write(json.dumps({"status": "error", "message": "请选择至少一个技能"}))
+                return
+            for sid in ids:
+                SkillRepository.toggle_status(sid, 0)
+            self.write(json.dumps({"status": "success", "message": f"已禁用 {len(ids)} 个技能"}))
+
         else:
             self.write(json.dumps({"status": "error", "message": "未知操作"}))

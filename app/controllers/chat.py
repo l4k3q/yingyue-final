@@ -52,6 +52,25 @@ class DigitalEmployeeAPIHandler(BaseHandler):
         }))
 
 
+class MessagesByConversationAPIHandler(BaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        conversation_id = self.get_query_argument("conversation_id", None)
+        if not conversation_id:
+            self.write(json.dumps({"success": False, "error": "缺少会话ID"}))
+            return
+        
+        try:
+            conversation_id = int(conversation_id)
+            messages = ConversationRepository.get_messages(conversation_id)
+            self.write(json.dumps({
+                "success": True,
+                "messages": messages
+            }))
+        except Exception as e:
+            self.write(json.dumps({"success": False, "error": str(e)}))
+
+
 class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
     def open(self):
         self.username = self.get_current_user()
@@ -82,7 +101,7 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             self.write_message({"type": "error", "data": "无效的消息格式"})
 
     def handle_new_conversation(self):
-        self.conversation_id = ConversationRepository.create_conversation(self.user_id, "新对话")
+        self.conversation_id = ConversationRepository.create_conversation(self.user_id, "新对话", business_type=0)
         self.write_message({"type": "conversation_created", "data": {"conversation_id": self.conversation_id}})
 
     def handle_load_conversation(self, conversation_id):

@@ -1,0 +1,410 @@
+{% extends "../admin/base.html" %}
+
+{% block title %}会话管理{% end %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    .stats-card h3 {
+        font-size: 14px;
+        margin: 0 0 10px 0;
+        opacity: 0.9;
+    }
+    .stats-card .number {
+        font-size: 32px;
+        font-weight: bold;
+        margin: 0;
+    }
+    .filter-section {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    .batch-actions {
+        margin-bottom: 15px;
+    }
+    .status-badge {
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 12px;
+    }
+    .status-normal { background: #d4edda; color: #155724; }
+    .status-archived { background: #fff3cd; color: #856404; }
+    .status-deleted { background: #f8d7da; color: #721c24; }
+</style>
+{% end %}
+
+{% block body %}
+<div style="display:none;">{% module xsrf_form_html() %}</div>
+<div class="layui-fluid">
+    <div class="layui-card">
+        <div class="layui-card-header">
+            <i class="fas fa-comments"></i> 会话管理
+        </div>
+        <div class="layui-card-body">
+            <!-- 统计看板 -->
+            <div class="layui-row layui-col-space15">
+                <div class="layui-col-md3">
+                    <div class="stats-card">
+                        <h3>今日新增会话</h3>
+                        <p class="number">{{ stats.get('today_count', 0) }}</p>
+                    </div>
+                </div>
+                <div class="layui-col-md3">
+                    <div class="stats-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <h3>总会话量</h3>
+                        <p class="number">{{ stats.get('total_count', 0) }}</p>
+                    </div>
+                </div>
+                <div class="layui-col-md3">
+                    <div class="stats-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                        <h3>总消息数</h3>
+                        <p class="number">{{ stats.get('total_messages', 0) }}</p>
+                    </div>
+                </div>
+                <div class="layui-col-md3">
+                    <div class="stats-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                        <h3>智能瞭望</h3>
+                        <p class="number" style="font-size: 22px;">
+                            瞭望 {{ stats.get('business_stats', {}).get(1, 0) }}
+                            <span style="font-size: 14px; opacity: 0.8; margin-left: 8px;">| 问数 {{ stats.get('business_stats', {}).get(2, 0) }}</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 筛选区域 -->
+            <div class="filter-section">
+                <form class="layui-form" action="/admin/conversations" method="get">
+                    <div class="layui-form-item">
+                        <div class="layui-inline">
+                            <label class="layui-form-label">用户ID</label>
+                            <div class="layui-input-inline">
+                                <select name="user_id" lay-verify="">
+                                    <option value="">全部用户</option>
+                                    {% for user in users %}
+                                    <option value="{{ user.id }}" {% if filters.user_id == user.id %}selected{% end %}>
+                                        {{ user.username }} (ID:{{ user.id }})
+                                    </option>
+                                    {% end %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="layui-inline">
+                            <label class="layui-form-label">业务类型</label>
+                            <div class="layui-input-inline">
+                                <select name="business_type">
+                                    <option value="">全部类型</option>
+                                    <option value="0" {% if filters.business_type == 0 %}selected{% end %}>通用对话</option>
+                                    <option value="1" {% if filters.business_type == 1 %}selected{% end %}>智能瞭望</option>
+                                    <option value="2" {% if filters.business_type == 2 %}selected{% end %}>智能问数</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="layui-inline">
+                            <label class="layui-form-label">归档状态</label>
+                            <div class="layui-input-inline">
+                                <select name="archive_status">
+                                    <option value="">全部状态</option>
+                                    <option value="0" {% if filters.archive_status == 0 %}selected{% end %}>正常</option>
+                                    <option value="1" {% if filters.archive_status == 1 %}selected{% end %}>已归档</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="layui-inline">
+                            <label class="layui-form-label">会话状态</label>
+                            <div class="layui-input-inline">
+                                <select name="status">
+                                    <option value="">全部</option>
+                                    <option value="1" {% if filters.status == 1 %}selected{% end %}>正常</option>
+                                    <option value="0" {% if filters.status == 0 %}selected{% end %}>已删除</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="layui-form-item">
+                        <div class="layui-inline">
+                            <label class="layui-form-label">开始日期</label>
+                            <div class="layui-input-inline">
+                                <input type="date" name="start_date" value="{{ filters.start_date }}" class="layui-input" placeholder="选择开始日期">
+                            </div>
+                        </div>
+                        <div class="layui-inline">
+                            <label class="layui-form-label">结束日期</label>
+                            <div class="layui-input-inline">
+                                <input type="date" name="end_date" value="{{ filters.end_date }}" class="layui-input" placeholder="选择结束日期">
+                            </div>
+                        </div>
+                        <div class="layui-inline">
+                            <label class="layui-form-label">关键词</label>
+                            <div class="layui-input-inline">
+                                <input type="text" name="keyword" value="{{ filters.keyword }}" class="layui-input" placeholder="会话ID或标题">
+                            </div>
+                        </div>
+                        <div class="layui-inline">
+                            <button class="layui-btn" lay-submit>
+                                <i class="fas fa-search"></i> 搜索
+                            </button>
+                            <a href="/admin/conversations" class="layui-btn layui-btn-primary">
+                                <i class="fas fa-redo"></i> 重置
+                            </a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 批量操作 -->
+            <div class="batch-actions">
+                <button class="layui-btn layui-btn-normal" id="batchArchive">
+                    <i class="fas fa-archive"></i> 批量归档
+                </button>
+                <button class="layui-btn layui-btn-danger" id="batchDelete">
+                    <i class="fas fa-trash"></i> 批量删除
+                </button>
+            </div>
+
+            <!-- 会话列表 -->
+            <table class="layui-table" lay-skin="line">
+                <colgroup>
+                    <col width="50">
+                    <col width="80">
+                    <col width="100">
+                    <col>
+                    <col width="100">
+                    <col width="100">
+                    <col width="80">
+                    <col width="100">
+                    <col width="150">
+                    <col width="200">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="checkAll"></th>
+                        <th>ID</th>
+                        <th>用户</th>
+                        <th>标题</th>
+                        <th>业务类型</th>
+                        <th>消息数</th>
+                        <th>归档状态</th>
+                        <th>会话状态</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for conv in conversations %}
+                    <tr>
+                        <td><input type="checkbox" class="conv-check" value="{{ conv.id }}"></td>
+                        <td>{{ conv.id }}</td>
+                        <td>{{ conv.username or '未知用户' }}</td>
+                        <td>{{ conv.title or '无标题' }}</td>
+                        <td>
+                            {% if conv.business_type == 0 %}
+                            <span class="layui-badge layui-bg-gray">通用</span>
+                            {% elif conv.business_type == 1 %}
+                            <span class="layui-badge layui-bg-blue">瞭望</span>
+                            {% elif conv.business_type == 2 %}
+                            <span class="layui-badge layui-bg-green">问数</span>
+                            {% end %}
+                        </td>
+                        <td>{{ conv.msg_count }}</td>
+                        <td>
+                            {% if conv.archive_status == 0 %}
+                            <span class="status-badge status-normal">正常</span>
+                            {% else %}
+                            <span class="status-badge status-archived">已归档</span>
+                            {% end %}
+                        </td>
+                        <td>
+                            {% if conv.status == 1 %}
+                            <span class="status-badge status-normal">正常</span>
+                            {% else %}
+                            <span class="status-badge status-deleted">已删除</span>
+                            {% end %}
+                        </td>
+                        <td>{{ conv.created_at }}</td>
+                        <td>
+                            <a href="/admin/messages?conversation_id={{ conv.id }}" class="layui-btn layui-btn-xs layui-btn-normal">
+                                <i class="fas fa-comment-dots"></i> 查看对话
+                            </a>
+                            {% if conv.archive_status == 0 %}
+                            <button class="layui-btn layui-btn-xs layui-btn-warm archive-btn" data-id="{{ conv.id }}">
+                                <i class="fas fa-archive"></i> 归档
+                            </button>
+                            {% else %}
+                            <button class="layui-btn layui-btn-xs layui-btn-primary unarchive-btn" data-id="{{ conv.id }}">
+                                <i class="fas fa-box-open"></i> 取消归档
+                            </button>
+                            {% end %}
+                            <button class="layui-btn layui-btn-xs layui-btn-danger delete-btn" data-id="{{ conv.id }}">
+                                <i class="fas fa-trash"></i> 删除
+                            </button>
+                        </td>
+                    </tr>
+                    {% end %}
+                </tbody>
+            </table>
+
+            <!-- 分页 -->
+            {% if total > 20 %}
+            <div class="pagination-container">
+                <div class="layui-laypage">
+                    {% set pages = (total + 19) // 20 %}
+                    {% if page > 1 %}
+                    <a href="/admin/conversations?page={{ page-1 }}&user_id={{ filters.user_id }}&business_type={{ filters.business_type }}&archive_status={{ filters.archive_status }}&status={{ filters.status }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}&keyword={{ filters.keyword }}">上一页</a>
+                    {% end %}
+                    {% set start_p = max(1, page - 2) %}
+                    {% set end_p = min(pages, page + 2) %}
+                    {% for p in range(start_p, end_p + 1) %}
+                    {% if p == page %}
+                    <span class="layui-laypage-curr"><em>{{ p }}</em></span>
+                    {% else %}
+                    <a href="/admin/conversations?page={{ p }}&user_id={{ filters.user_id }}&business_type={{ filters.business_type }}&archive_status={{ filters.archive_status }}&status={{ filters.status }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}&keyword={{ filters.keyword }}">{{ p }}</a>
+                    {% end %}
+                    {% end %}
+                    {% if page < pages %}
+                    <a href="/admin/conversations?page={{ page+1 }}&user_id={{ filters.user_id }}&business_type={{ filters.business_type }}&archive_status={{ filters.archive_status }}&status={{ filters.status }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}&keyword={{ filters.keyword }}">下一页</a>
+                    {% end %}
+                    <span>共 {{ total }} 条</span>
+                </div>
+            </div>
+            {% end %}
+        </div>
+    </div>
+</div>
+{% end %}
+
+{% block extra_js %}
+<script>
+function getXsrfToken() {
+    var inputs = document.querySelectorAll('input[name="_xsrf"]');
+    return inputs.length > 0 ? inputs[0].value : '';
+}
+
+layui.use(['layer', 'element'], function(){
+    var layer = layui.layer;
+    var $ = layui.$;
+
+    // 全选
+    $('#checkAll').on('click', function(){
+        $('.conv-check').prop('checked', this.checked);
+    });
+
+    function postAction(params, callback) {
+        var body = 'action=' + encodeURIComponent(params.action);
+        for (var key in params) {
+            if (key !== 'action') {
+                body += '&' + key + '=' + encodeURIComponent(params[key]);
+            }
+        }
+        body += '&_xsrf=' + encodeURIComponent(getXsrfToken());
+        fetch('/admin/conversations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-XSRFToken': getXsrfToken()
+            },
+            body: body
+        }).then(function(r) { return r.json(); }).then(callback);
+    }
+
+    // 单个归档
+    $('.archive-btn').on('click', function(){
+        var id = $(this).data('id');
+        layer.confirm('确定要归档这个会话吗？', function(index){
+            postAction({action: 'archive', conversation_id: id}, function(res){
+                if(res.status === 'success'){
+                    layer.msg('归档成功', {icon: 1});
+                    setTimeout(function(){ location.reload(); }, 1000);
+                } else {
+                    layer.msg(res.message || '操作失败', {icon: 2});
+                }
+            });
+            layer.close(index);
+        });
+    });
+
+    // 取消归档
+    $('.unarchive-btn').on('click', function(){
+        var id = $(this).data('id');
+        postAction({action: 'unarchive', conversation_id: id}, function(res){
+            if(res.status === 'success'){
+                layer.msg('已取消归档', {icon: 1});
+                setTimeout(function(){ location.reload(); }, 1000);
+            } else {
+                layer.msg(res.message || '操作失败', {icon: 2});
+            }
+        });
+    });
+
+    // 单个删除
+    $('.delete-btn').on('click', function(){
+        var id = $(this).data('id');
+        layer.confirm('确定要删除这个会话吗？此操作不可恢复！', {icon: 3}, function(index){
+            postAction({action: 'delete', conversation_id: id}, function(res){
+                if(res.status === 'success'){
+                    layer.msg('删除成功', {icon: 1});
+                    setTimeout(function(){ location.reload(); }, 1000);
+                } else {
+                    layer.msg(res.message || '操作失败', {icon: 2});
+                }
+            });
+            layer.close(index);
+        });
+    });
+
+    // 批量归档
+    $('#batchArchive').on('click', function(){
+        var ids = [];
+        $('.conv-check:checked').each(function(){
+            ids.push($(this).val());
+        });
+        if(ids.length === 0){
+            layer.msg('请至少选择一个会话', {icon: 0});
+            return;
+        }
+        layer.confirm('确定要批量归档选中的 ' + ids.length + ' 个会话吗？', function(index){
+            postAction({action: 'batch_archive', ids: JSON.stringify(ids)}, function(res){
+                if(res.status === 'success'){
+                    layer.msg(res.message, {icon: 1});
+                    setTimeout(function(){ location.reload(); }, 1000);
+                } else {
+                    layer.msg(res.message || '操作失败', {icon: 2});
+                }
+            });
+            layer.close(index);
+        });
+    });
+
+    // 批量删除
+    $('#batchDelete').on('click', function(){
+        var ids = [];
+        $('.conv-check:checked').each(function(){
+            ids.push($(this).val());
+        });
+        if(ids.length === 0){
+            layer.msg('请至少选择一个会话', {icon: 0});
+            return;
+        }
+        layer.confirm('确定要批量删除选中的 ' + ids.length + ' 个会话吗？此操作不可恢复！', {icon: 3}, function(index){
+            postAction({action: 'batch_delete', ids: JSON.stringify(ids)}, function(res){
+                if(res.status === 'success'){
+                    layer.msg(res.message, {icon: 1});
+                    setTimeout(function(){ location.reload(); }, 1000);
+                } else {
+                    layer.msg(res.message || '操作失败', {icon: 2});
+                }
+            });
+            layer.close(index);
+        });
+    });
+});
+</script>
+{% end %}

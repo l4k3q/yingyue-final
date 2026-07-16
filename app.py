@@ -5,7 +5,7 @@ from tornado.httpserver import HTTPServer
 
 from app.controllers.auth import LoginHandler, LogoutHandler, RegisterHandler
 from app.controllers.home import IndexHandler
-from app.controllers.chat import ChatWebSocketHandler, ConversationAPIHandler, DigitalEmployeeAPIHandler
+from app.controllers.chat import ChatWebSocketHandler, ConversationAPIHandler, DigitalEmployeeAPIHandler, MessagesByConversationAPIHandler
 from app.controllers.report import ReportHandler
 from app.controllers.history import HistoryHandler
 from app.controllers.export import ExportHandler
@@ -15,7 +15,8 @@ from app.controllers.admin import (
     AdminRoleHandler, AdminRoleFunctionsHandler, AdminWatchHandler,
     AdminWatchSourceHandler, AdminDataHandler, AdminCollectionHandler,
     AdminDigitalEmployeeHandler, AdminModelHandler, AdminModelTestHandler,
-    AdminDashboardHandler, AdminSentimentHandler, AdminSettingHandler
+    AdminDashboardHandler, AdminSentimentHandler, AdminSettingHandler,
+    AdminConversationHandler, AdminMessageHandler, AdminSkillHandler
 )
 from app.models.db import init_db
 
@@ -45,6 +46,7 @@ def webapp():
         # ========== API 路由 ==========
         (r"/api/conversations", ConversationAPIHandler),
         (r"/api/digital_employees", DigitalEmployeeAPIHandler),
+        (r"/api/messages/by_conversation", MessagesByConversationAPIHandler),
 
         # ========== WebSocket 路由 ==========
         (r"/ws/chat", ChatWebSocketHandler),
@@ -68,6 +70,9 @@ def webapp():
         (r"/admin/dashboard", AdminDashboardHandler),
         (r"/admin/sentiment", AdminSentimentHandler),
         (r"/admin/setting", AdminSettingHandler),
+        (r"/admin/conversations", AdminConversationHandler),
+        (r"/admin/messages", AdminMessageHandler),
+        (r"/admin/skills", AdminSkillHandler),
     ],
         **settings
     )
