@@ -33,6 +33,10 @@ def init_db():
             )
             """
         )
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN face_embedding TEXT")
+        except sqlite3.OperationalError:
+            pass
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS admins(
@@ -186,6 +190,10 @@ def init_db():
             conn.execute("ALTER TABLE digital_employees ADD COLUMN md_files_path TEXT")
         except sqlite3.OperationalError:
             pass
+        try:
+            conn.execute("ALTER TABLE watch_sources ADD COLUMN collect_config TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS deep_collect_tasks(
@@ -219,6 +227,52 @@ def init_db():
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS system_settings(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL UNIQUE,
+                value TEXT,
+                group_name TEXT NOT NULL DEFAULT 'general',
+                label TEXT NOT NULL,
+                type TEXT NOT NULL DEFAULT 'text',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                description TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
+        cursor = conn.execute("SELECT COUNT(*) FROM system_settings")
+        count = cursor.fetchone()[0]
+        if count == 0:
+            settings = [
+                ('site_name', '智能瞭望与问数系统', 'general', '系统名称', 'text', 1, '显示在浏览器标签页和系统标题栏'),
+                ('site_subtitle', 'DataFinderAgentOS', 'general', '系统副标题', 'text', 2, '系统英文名称或副标题'),
+                ('site_version', '1.0.0', 'general', '系统版本', 'text', 3, '当前系统的版本号'),
+                ('site_logo', '智能瞭望与问数系统', 'general', 'Logo文字', 'text', 4, '显示在管理后台左上角的Logo区域'),
+                ('site_description', '基于大模型的智能数据瞭望与问答系统', 'general', '系统描述', 'textarea', 5, '系统简要介绍，用于登录页等位置'),
+                ('site_keywords', 'AI,数据,瞭望,大模型', 'general', '系统关键词', 'text', 6, 'SEO关键词，逗号分隔'),
+                ('site_record', '', 'general', '备案号', 'text', 7, '网站ICP备案号（如有）'),
+                ('db_type', 'sqlite', 'database', '数据库类型', 'text', 1, '当前数据库类型（仅支持SQLite）'),
+                ('db_path', 'database/finderos.db', 'database', '数据库路径', 'text', 2, 'SQLite数据库文件的相对路径'),
+                ('db_timeout', '30', 'database', '连接超时(秒)', 'number', 3, '数据库连接超时时间'),
+                ('session_max_age', '7', 'security', '会话超时(天)', 'number', 1, '管理员登录会话保持天数'),
+                ('login_max_attempts', '5', 'security', '登录失败上限', 'number', 2, '连续登录失败达到此次数后锁定'),
+                ('login_lockout_minutes', '15', 'security', '锁定时间(分钟)', 'number', 3, '账号被锁定后的恢复时间'),
+                ('ws_rate_limit', '60', 'security', 'WS消息频率', 'number', 4, 'WebSocket每分钟最大消息数'),
+                ('llm_default_key', 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'llm', '默认API Key', 'password', 1, '大模型默认API密钥'),
+                ('llm_default_url', 'https://api.deepseek.com/v1', 'llm', '默认Base URL', 'text', 2, '大模型默认API地址'),
+                ('llm_default_model', 'deepseek-chat', 'llm', '默认模型ID', 'text', 3, '系统默认使用的模型标识'),
+                ('llm_default_temperature', '0.7', 'llm', '默认Temperature', 'number', 4, '生成文本的随机程度，0-2之间'),
+                ('llm_default_max_tokens', '4096', 'llm', '默认Max Tokens', 'number', 5, '单次生成的最大Token数'),
+                ('llm_stream', 'true', 'llm', '流式输出', 'select', 6, '是否启用流式输出（SSE）'),
+            ]
+            for s in settings:
+                conn.execute(
+                    "INSERT INTO system_settings (key, value, group_name, label, type, sort_order, description) VALUES (?,?,?,?,?,?,?)",
+                    s
+                )
         cursor = conn.execute("SELECT COUNT(*) FROM admins WHERE username='admin'")
         count = cursor.fetchone()[0]
         if count == 0:
@@ -253,8 +307,9 @@ def init_db():
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('AI管理', 'icon-robot', '/admin/model', 0, 5)")
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('数字员工', 'icon-face', '/admin/digital_employee', 13, 1)")
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('模型引擎', 'icon-cpu', '/admin/model', 13, 2)")
-            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('数智大屏', 'icon-screen', '/admin/dashboard', 0, 6)")
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('数智大屏', 'icon-screen', '/admin/screen', 0, 6)")
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('舆情大屏', 'icon-cloud', '/admin/sentiment', 0, 7)")
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('系统设置', 'icon-set', '/admin/setting', 0, 8)")
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 1)")
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 2)")
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 3)")
@@ -272,6 +327,15 @@ def init_db():
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 15)")
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 16)")
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 17)")
+            conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 18)")
+
+        # 确保已有数据库也包含系统设置菜单
+        cursor = conn.execute("SELECT COUNT(*) FROM functions WHERE url='/admin/setting'")
+        if cursor.fetchone()[0] == 0:
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('系统设置', 'icon-set', '/admin/setting', 0, 8)")
+            func_id = conn.execute("SELECT id FROM functions WHERE url='/admin/setting'").fetchone()[0]
+            conn.execute("INSERT OR IGNORE INTO role_functions (role_id, function_id) VALUES (2, ?)", (func_id,))
+
         cursor = conn.execute("SELECT COUNT(*) FROM watch_sources")
         count = cursor.fetchone()[0]
         if count == 0:
@@ -301,9 +365,46 @@ def init_db():
                 "tn": "news",
                 "rsv_dl": "ns_pc"
             }
+            baidu_config = {
+                "keyword_param": "word",
+                "page_param": "pn",
+                "page_start": 0,
+                "page_step": 10,
+                "parser": "baidu_news"
+            }
             conn.execute(
-                "INSERT INTO watch_sources (name, url, request_headers, params, status, description) VALUES (?,?,?,?,?,?)",
-                ("百度新闻", "https://www.baidu.com/s", json.dumps(baidu_headers), json.dumps(baidu_params), 1, "百度新闻搜索接口，支持关键词搜索和分页")
+                "INSERT INTO watch_sources (name, url, request_headers, params, status, description, collect_config) VALUES (?,?,?,?,?,?,?)",
+                ("百度新闻", "https://www.baidu.com/s", json.dumps(baidu_headers), json.dumps(baidu_params), 1, "百度新闻搜索接口，支持关键词搜索和分页", json.dumps(baidu_config))
+            )
+
+            sina_headers = {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Host": "search.sina.com.cn",
+                "Pragma": "no-cache",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 QQBrowser/21.4.9121.400",
+                "sec-ch-ua": "\"Chromium\";v=\"138\", \"Not=A?Brand\";v=\"8\", \"QQBrowser\";v=\"138\"",
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": "\"Windows\""
+            }
+            sina_params = {}
+            sina_config = {
+                "keyword_param": "q",
+                "page_param": "page",
+                "page_start": 1,
+                "page_step": 1,
+                "parser": "sina_news"
+            }
+            conn.execute(
+                "INSERT INTO watch_sources (name, url, request_headers, params, status, description, collect_config) VALUES (?,?,?,?,?,?,?)",
+                ("新浪新闻", "https://search.sina.com.cn/", json.dumps(sina_headers), json.dumps(sina_params), 1, "新浪新闻搜索接口，支持关键词搜索和分页", json.dumps(sina_config))
             )
         
         cursor = conn.execute("SELECT COUNT(*) FROM ai_models")

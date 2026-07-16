@@ -1,6 +1,8 @@
 import json
 import re
 import time
+import asyncio
+import base64
 
 import tornado.websocket
 
@@ -104,6 +106,8 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
                 self.selected_model_id = msg_data.get("model_id") if isinstance(msg_data, dict) else None
             elif msg_type == "ping":
                 self.write_message({"type": "pong"})
+            elif msg_type == "gesture":
+                self.handle_gesture(msg_data)
         except json.JSONDecodeError:
             self.write_message({"type": "error", "data": "无效的消息格式"})
 
@@ -123,6 +127,27 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             return
         ConversationRepository.delete_conversation(conversation_id)
         self.write_message({"type": "conversation_deleted", "data": conversation_id})
+
+    def handle_gesture(self, gesture_data):
+        if not gesture_data or not self.user_id:
+            return
+        
+        gesture = gesture_data.get("gesture", "")
+        
+        gesture_mapping = {
+            "scissors": {"employee": "天气", "args": ""},
+            "fist": {"employee": "音乐", "args": ""},
+            "palm": {"employee": "新闻", "args": ""}
+        }
+        
+        if gesture == "thumbs_up":
+            self.write_message({"type": "stream", "data": "生成已停止"})
+            self.write_message({"type": "done"})
+            return
+        
+        if gesture in gesture_mapping:
+            mapping = gesture_mapping[gesture]
+            self.handle_employee_message(mapping["employee"], mapping["args"])
 
     def handle_message(self, content, model_id=None):
         if not content or not self.user_id:
@@ -483,3 +508,31 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
 
     def check_origin(self, origin):
         return True
+
+
+class TTSHandler(BaseHandler):
+    @tornado.web.authenticated
+    async def post(self):
+        try:
+            data = json.loads(self.request.body)
+            text = data.get("text", "")
+            
+            if not text:
+                self.write(json.dumps({"success": False, "message": "请输入要合成的文本"}))
+                return
+
+            try:
+                import edge_tts
+                communicate = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural")
+                audio_data = b""
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_data += chunk["data"]
+                
+                audio_base64 = base64.b64encode(audio_data).decode("utf-8")
+                self.write(json.dumps({"success": True, "audio": audio_base64}))
+            except Exception as e:
+                print(f"[TTS] 语音合成失败: {e}", flush=True)
+                self.write(json.dumps({"success": False, "message": f"语音合成失败: {str(e)}"}))
+        except json.JSONDecodeError:
+            self.write(json.dumps({"success": False, "message": "请求格式错误"}))

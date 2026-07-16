@@ -8,9 +8,10 @@ from app.models.user import UserRepository
 from app.models.role import RoleRepository
 from app.models.function import FunctionRepository
 from app.models.watch import WatchSourceRepository, WatchRecordRepository, WatchCollector
-from app.models.model import AIModelRepository, AIModelService
+from app.models.model import AIModelRepository, AIModelService, mask_api_key
 from app.models.warehouse import DataWarehouseRepository, DeepCollectTaskRepository, DeepCollectService
 from app.models.digital_employee import DigitalEmployeeRepository, DigitalEmployeeService
+from app.models.setting import SystemSettingRepository
 
 
 class AdminBaseHandler(tornado.web.RequestHandler):
@@ -20,9 +21,75 @@ class AdminBaseHandler(tornado.web.RequestHandler):
             return None
         return admin.decode("utf-8")
 
+    def get_current_role_id(self):
+        role = self.get_secure_cookie("admin_role")
+        if not role:
+            return 0
+        try:
+            return int(role.decode("utf-8"))
+        except Exception:
+            return 0
+
     def prepare(self):
         if not self.get_current_user():
             self.redirect("/admin/login")
+
+    def has_function_permission(self, url: str) -> bool:
+        """校验当前管理员角色是否拥有指定 URL 对应的功能权限。admin/系统管理员默认放行。"""
+        username = self.get_current_user()
+        role_id = self.get_current_role_id()
+        # admin 账号与系统管理员角色默认拥有所有权限
+        if username == "admin" or role_id == 2:
+            return True
+
+        # 兼容旧数据库：数智大屏功能 URL 可能为 /admin/dashboard 或 /admin/screen
+        check_urls = [url]
+        if url == "/admin/screen":
+            check_urls.append("/admin/dashboard")
+        elif url == "/admin/dashboard":
+            check_urls.append("/admin/screen")
+
+        allowed_ids = RoleRepository.get_role_functions(role_id)
+        for check_url in check_urls:
+            func = FunctionRepository.get_function_by_url(check_url)
+            if func and func["id"] in allowed_ids:
+                return True
+        return False
+
+    def require_function_permission(self, url: str):
+        """无权限时跳转至无权限提示页。"""
+        if not self.has_function_permission(url):
+            self.redirect("/admin/no_permission")
+            return False
+        return True
+
+    def render(self, template_name, **kwargs):
+        """向所有后台模板注入当前用户拥有的功能权限列表，便于菜单按需展示。"""
+        if "user_functions" not in kwargs:
+            role_id = self.get_current_role_id()
+            if role_id and (self.get_current_user() == "admin" or role_id == 2):
+                kwargs["user_functions"] = [f["url"] for f in FunctionRepository.get_all_functions() if f.get("url")]
+            elif role_id:
+                allowed_ids = RoleRepository.get_role_functions(role_id)
+                kwargs["user_functions"] = [
+                    f["url"] for f in FunctionRepository.get_all_functions()
+                    if f.get("id") in allowed_ids and f.get("url")
+                ]
+            else:
+                kwargs["user_functions"] = []
+        super().render(template_name, **kwargs)
+
+    def get_template_namespace(self):
+        namespace = super().get_template_namespace()
+        try:
+            settings_list = SystemSettingRepository.get_all_settings()
+            site = {}
+            for s in settings_list:
+                site[s["key"]] = s["value"]
+            namespace["site"] = site
+        except Exception:
+            namespace["site"] = {"site_name": "智能瞭望与问数系统", "site_subtitle": "DataFinderAgentOS"}
+        return namespace
 
 
 class AdminLoginHandler(tornado.web.RequestHandler):
@@ -254,9 +321,19 @@ class AdminWatchHandler(AdminBaseHandler):
             source_ids = [int(s) for s in source_ids.split(",") if s.strip()]
             
             for source_id in source_ids:
+                source = WatchSourceRepository.get_source_by_id(source_id)
                 html_content = WatchCollector.collect(source_id, keyword, page=1)
                 if html_content and "采集失败" not in html_content:
-                    articles = WatchCollector.parse_baidu_news(html_content)
+                    # 根据源的配置选择解析器
+                    parser_name = WatchCollector.get_parser(source)
+                    if parser_name == "sina_news":
+                        articles = WatchCollector.parse_sina_news(html_content)
+                    elif parser_name == "sogou_news":
+                        articles = WatchCollector.parse_sogou_news(html_content)
+                    elif parser_name == "360_news":
+                        articles = WatchCollector.parse_360_news(html_content)
+                    else:
+                        articles = WatchCollector.parse_baidu_news(html_content)
                     WatchRecordRepository.create_record(source_id, keyword, page=1, data=json.dumps(articles), status=1)
                 else:
                     WatchRecordRepository.create_record(source_id, keyword, page=1, data=html_content or "", status=0)
@@ -298,7 +375,8 @@ class AdminWatchSourceHandler(AdminBaseHandler):
             request_headers = self.get_body_argument("request_headers", "")
             params = self.get_body_argument("params", "")
             description = self.get_body_argument("description", "")
-            WatchSourceRepository.create_source(name, url, request_headers, params, description)
+            collect_config = self.get_body_argument("collect_config", "")
+            WatchSourceRepository.create_source(name, url, request_headers, params, description, collect_config)
             self.redirect("/admin/watch/source")
         elif action == "edit":
             source_id = int(self.get_body_argument("id", 0))
@@ -307,7 +385,8 @@ class AdminWatchSourceHandler(AdminBaseHandler):
             request_headers = self.get_body_argument("request_headers", "")
             params = self.get_body_argument("params", "")
             description = self.get_body_argument("description", "")
-            WatchSourceRepository.update_source(source_id, name, url, request_headers, params, description)
+            collect_config = self.get_body_argument("collect_config", "")
+            WatchSourceRepository.update_source(source_id, name, url, request_headers, params, description, collect_config)
             self.redirect("/admin/watch/source")
         elif action == "delete":
             source_id = int(self.get_body_argument("id", 0))
@@ -321,9 +400,19 @@ class AdminWatchSourceHandler(AdminBaseHandler):
         elif action == "test":
             source_id = int(self.get_body_argument("id", 0))
             keyword = self.get_body_argument("keyword", "测试")
+            source = WatchSourceRepository.get_source_by_id(source_id)
             html_content = WatchCollector.collect(source_id, keyword, page=1)
             if html_content and "采集失败" not in html_content:
-                articles = WatchCollector.parse_baidu_news(html_content)
+                # 根据源的配置选择解析器
+                parser_name = WatchCollector.get_parser(source)
+                if parser_name == "sina_news":
+                    articles = WatchCollector.parse_sina_news(html_content)
+                elif parser_name == "sogou_news":
+                    articles = WatchCollector.parse_sogou_news(html_content)
+                elif parser_name == "360_news":
+                    articles = WatchCollector.parse_360_news(html_content)
+                else:
+                    articles = WatchCollector.parse_baidu_news(html_content)
                 self.write(json.dumps({"status": "success", "data": articles}))
             else:
                 self.write(json.dumps({"status": "error", "message": html_content}))
@@ -565,6 +654,8 @@ class AdminModelHandler(AdminBaseHandler):
         page = int(self.get_query_argument("page", 1))
         keyword = self.get_query_argument("keyword", "")
         models, total = AIModelRepository.get_models(page=page, page_size=12, keyword=keyword)
+        for model in models:
+            model["api_key"] = mask_api_key(model["api_key"])
         token_stats = AIModelRepository.get_token_stats()
         self.render("admin/model.html", title="模型引擎", models=models, total=total, page=page, keyword=keyword, token_stats=token_stats)
 
@@ -574,6 +665,7 @@ class AdminModelHandler(AdminBaseHandler):
             model_id = int(self.get_body_argument("id", 0))
             model = AIModelRepository.get_model_by_id(model_id)
             if model:
+                model["api_key"] = mask_api_key(model["api_key"])
                 self.write(json.dumps(model))
             else:
                 self.write(json.dumps({"error": "模型不存在"}))
@@ -600,6 +692,10 @@ class AdminModelHandler(AdminBaseHandler):
             name = self.get_body_argument("name", "")
             model_id_str = self.get_body_argument("model_id", "")
             api_key = self.get_body_argument("api_key", "")
+            if "******" in api_key:
+                original_model = AIModelRepository.get_model_by_id(model_id)
+                if original_model:
+                    api_key = original_model["api_key"]
             base_url = self.get_body_argument("base_url", "")
             temperature = float(self.get_body_argument("temperature", 0.7))
             max_tokens = int(self.get_body_argument("max_tokens", 4096))
@@ -665,9 +761,23 @@ class AdminModelTestHandler(AdminBaseHandler):
                         content = delta["content"]
                         full_content += content
                         completion_tokens += AIModelService.estimate_tokens(content)
-                        self.write(f"data: {json.dumps({'type': 'token', 'content': content, 'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens, 'total_tokens': prompt_tokens + completion_tokens})}\n\n")
+                        token_data = {
+                            'type': 'token',
+                            'content': content,
+                            'prompt_tokens': prompt_tokens,
+                            'completion_tokens': completion_tokens,
+                            'total_tokens': prompt_tokens + completion_tokens
+                        }
+                        self.write("data: " + json.dumps(token_data) + "\n\n")
                         self.flush()
-            self.write(f"data: {json.dumps({'type': 'done', 'content': full_content, 'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens, 'total_tokens': prompt_tokens + completion_tokens})}\n\n")
+            done_data = {
+                'type': 'done',
+                'content': full_content,
+                'prompt_tokens': prompt_tokens,
+                'completion_tokens': completion_tokens,
+                'total_tokens': prompt_tokens + completion_tokens
+            }
+            self.write("data: " + json.dumps(done_data) + "\n\n")
             AIModelRepository.update_tokens(model_id, prompt_tokens, completion_tokens)
         except Exception as e:
             self.write(f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n")
@@ -679,6 +789,40 @@ class AdminDashboardHandler(AdminBaseHandler):
         self.render("admin/dashboard.html", title="数智大屏")
 
 
+class AdminScreenHandler(AdminBaseHandler):
+    def get(self):
+        if not self.require_function_permission("/admin/screen"):
+            return
+        self.render("admin/screen.html", title="瞭望采集数智可视化大屏")
+
+
 class AdminSentimentHandler(AdminBaseHandler):
     def get(self):
         self.render("admin/sentiment.html", title="舆情大屏")
+
+
+class AdminNoPermissionHandler(AdminBaseHandler):
+    def get(self):
+        self.render("admin/no_permission.html", title="无访问权限")
+
+
+class AdminSettingHandler(AdminBaseHandler):
+    def get(self):
+        groups = SystemSettingRepository.get_grouped_settings()
+        self.render("admin/setting.html", title="系统设置", groups=groups)
+
+    def post(self):
+        action = self.get_body_argument("action", "")
+        if action == "save":
+            settings = SystemSettingRepository.get_all_settings()
+            for s in settings:
+                key = s["key"]
+                new_value = self.get_body_argument(key, None)
+                if new_value is not None:
+                    SystemSettingRepository.update_setting(key, new_value)
+            self.write(json.dumps({"status": "success", "message": "设置保存成功"}))
+        elif action == "reset":
+            # For reset, we could re-seed but simplest is to redirect back
+            self.write(json.dumps({"status": "success", "message": "已重置"}))
+        else:
+            self.write(json.dumps({"status": "error", "message": "未知操作"}))
