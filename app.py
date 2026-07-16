@@ -15,7 +15,7 @@ from app.controllers.admin import (
     AdminRoleHandler, AdminRoleFunctionsHandler, AdminWatchHandler,
     AdminWatchSourceHandler, AdminDataHandler, AdminCollectionHandler,
     AdminDigitalEmployeeHandler, AdminModelHandler, AdminModelTestHandler,
-    AdminDashboardHandler, AdminSentimentHandler
+    AdminDashboardHandler, AdminSentimentHandler, AdminSettingHandler
 )
 from app.models.db import init_db
 
@@ -67,6 +67,7 @@ def webapp():
         (r"/admin/model/test", AdminModelTestHandler),
         (r"/admin/dashboard", AdminDashboardHandler),
         (r"/admin/sentiment", AdminSentimentHandler),
+        (r"/admin/setting", AdminSettingHandler),
     ],
         **settings
     )
