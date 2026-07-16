@@ -86,9 +86,14 @@ class IntentService:
 
     @staticmethod
     def recognize_with_llm(content: str) -> dict:
+        # 快速路径：@开头直接识别为数字员工，无需调用LLM
+        fast_result = IntentService.recognize(content)
+        if fast_result.get("intent") == "digital_employee" and fast_result.get("confidence", 0) >= 1.0:
+            return fast_result
+
         model = AIModelRepository.get_default_model()
         if not model:
-            return IntentService.recognize(content)
+            return fast_result
 
         system_prompt = """你是一个专业的意图识别助手。请分析用户输入，判断其意图类型，并返回JSON格式结果。
 

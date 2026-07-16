@@ -1,4 +1,5 @@
 import json
+import random
 import sqlite3
 import requests
 import urllib.parse
@@ -425,6 +426,12 @@ class DigitalEmployeeService:
                 url_parts = urllib.parse.urlparse(api_url)
                 path = urllib.parse.quote(url_parts.path, safe='/')
                 api_url = urllib.parse.urlunparse((url_parts.scheme, url_parts.netloc, path, url_parts.params, url_parts.query, url_parts.fragment))
+            elif employee.get("code_name") == "music":
+                random_terms = ["hot", "top", "love", "new", "popular", "best", "summer", "party", "dance",
+                                "chill", "happy", "sad", "rock", "jazz", "classic", "hiphop", "pop", "fresh",
+                                "cool", "trending", "golden", "viral", "soul", "dream", "star"]
+                query = params.get("query", "").strip() if params else ""
+                query_params["term"] = query if query else random.choice(random_terms)
             else:
                 query_params.update(params)
                 if isinstance(body, dict):
@@ -481,6 +488,114 @@ class DigitalEmployeeService:
                             "type": "api",
                             "raw": response.text
                         }
+                    except (IndexError, KeyError):
+                        pass
+
+                if employee.get("code_name") == "music" and isinstance(result, dict):
+                    try:
+                        results = result.get("results", [])
+                        if results:
+                            song = random.choice(results)
+                            track_name = song.get("trackName", "未知歌曲")
+                            artist_name = song.get("artistName", "未知歌手")
+                            collection_name = song.get("collectionName", "未知专辑")
+                            artwork_url = song.get("artworkUrl100", "")
+                            artwork_url = artwork_url.replace("100x100bb", "300x300bb") if artwork_url else ""
+                            preview_url = song.get("previewUrl", "")
+                            track_url = song.get("trackViewUrl", "")
+                            genre = song.get("primaryGenreName", "未知风格")
+                            track_time = song.get("trackTimeMillis", 0)
+                            minutes = track_time // 60000
+                            seconds = (track_time % 60000) // 1000
+                            duration = f"{minutes}:{seconds:02d}"
+                            price = song.get("trackPrice", 0)
+                            currency = song.get("currency", "USD")
+
+                            return {
+                                "success": True,
+                                "content": {
+                                    "track_name": track_name,
+                                    "artist_name": artist_name,
+                                    "collection_name": collection_name,
+                                    "artwork_url": artwork_url,
+                                    "preview_url": preview_url,
+                                    "track_url": track_url,
+                                    "genre": genre,
+                                    "duration": duration,
+                                    "price": f"{price} {currency}" if price else "免费"
+                                },
+                                "type": "api",
+                                "raw": response.text
+                            }
+                        else:
+                            # Empty results -- retry with random English search terms
+                            retry_terms = ["top hits", "popular songs", "best music",
+                                           "hot tracks", "new releases", "summer hits",
+                                           "party music", "chill songs", "rock classics"]
+                            for attempt in range(3):
+                                retry_term = random.choice(retry_terms)
+                                query_params["term"] = retry_term
+                                url = api_url
+                                if query_params:
+                                    if "?" in url:
+                                        retry_url = url + "&" + urllib.parse.urlencode(query_params, encoding='utf-8')
+                                    else:
+                                        retry_url = url + "?" + urllib.parse.urlencode(query_params, encoding='utf-8')
+                                try:
+                                    retry_resp = requests.get(retry_url, headers=headers, timeout=10, verify=False)
+                                    retry_data = retry_resp.json()
+                                    retry_results = retry_data.get("results", [])
+                                    if retry_results:
+                                        song = random.choice(retry_results)
+                                        track_name = song.get("trackName", "未知歌曲")
+                                        artist_name = song.get("artistName", "未知歌手")
+                                        collection_name = song.get("collectionName", "未知专辑")
+                                        artwork_url = song.get("artworkUrl100", "")
+                                        artwork_url = artwork_url.replace("100x100bb", "300x300bb") if artwork_url else ""
+                                        track_url = song.get("trackViewUrl", "")
+                                        genre = song.get("primaryGenreName", "未知风格")
+                                        track_time = song.get("trackTimeMillis", 0)
+                                        minutes = track_time // 60000
+                                        seconds = (track_time % 60000) // 1000
+                                        duration = f"{minutes}:{seconds:02d}"
+                                        price = song.get("trackPrice", 0)
+                                        currency = song.get("currency", "USD")
+                                        return {
+                                            "success": True,
+                                            "content": {
+                                                "track_name": track_name,
+                                                "artist_name": artist_name,
+                                                "collection_name": collection_name,
+                                                "artwork_url": artwork_url,
+                                                "preview_url": song.get("previewUrl", ""),
+                                                "track_url": track_url,
+                                                "genre": genre,
+                                                "duration": duration,
+                                                "price": f"{price} {currency}" if price else "免费"
+                                            },
+                                            "type": "api",
+                                            "raw": retry_resp.text
+                                        }
+                                except Exception:
+                                    continue
+
+                            # All retries failed -- return fallback
+                            return {
+                                "success": True,
+                                "content": {
+                                    "track_name": "暂无推荐歌曲",
+                                    "artist_name": "请稍后再试",
+                                    "collection_name": "音乐服务暂时不可用",
+                                    "artwork_url": "",
+                                    "preview_url": "",
+                                    "track_url": "#",
+                                    "genre": "未知",
+                                    "duration": "0:00",
+                                    "price": "免费"
+                                },
+                                "type": "api",
+                                "raw": ""
+                            }
                     except (IndexError, KeyError):
                         pass
                 

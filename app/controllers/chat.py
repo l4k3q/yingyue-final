@@ -57,18 +57,19 @@ class DigitalEmployeeAPIHandler(BaseHandler):
 class ModelListAPIHandler(BaseHandler):
     @tornado.web.authenticated
     def get(self):
-        models, total = AIModelRepository.get_models(page=1, page_size=100)
-        safe_models = []
+        models, _ = AIModelRepository.get_models(page=1, page_size=100)
+        model_list = []
         for m in models:
             if m.get("status") == 1:
-                safe_models.append({
+                model_list.append({
                     "id": m["id"],
                     "name": m["name"],
+                    "model_id": m["model_id"],
                     "description": m.get("description", ""),
-                    "provider": m.get("provider", "openai"),
-                    "is_default": m.get("is_default", 0),
+                    "provider": m.get("provider", ""),
+                    "is_default": m.get("is_default", 0)
                 })
-        self.write(json.dumps({"success": True, "models": safe_models}))
+        self.write(json.dumps({"success": True, "models": model_list}))
 
 
 class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
@@ -87,7 +88,11 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             data = json.loads(message)
             msg_type = data.get("type")
             msg_data = data.get("data")
-            
+
+            # Store model selection if provided
+            if data.get("model_id") is not None:
+                self.selected_model_id = data.get("model_id")
+
             if msg_type == "message":
                 if isinstance(msg_data, dict):
                     content = msg_data.get("content", "")
@@ -342,13 +347,21 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
             self.write_message({"type": "error", "data": error_msg})
             self.handle_general_chat(content)
 
+    def _get_model(self):
+        """Get the selected model, or fall back to the default model."""
+        if self.selected_model_id:
+            model = AIModelRepository.get_model_by_id(self.selected_model_id)
+            if model and model.get("status") == 1:
+                return model
+        return AIModelRepository.get_default_model()
+
     def handle_relationship_mining(self, content):
         start_time = time.time()
-        
+
         try:
             self.write_message({"type": "typing", "data": "正在挖掘数据关系..."})
-            
-            model = AIModelRepository.get_default_model()
+
+            model = self._get_model()
             if not model:
                 ai_response = "关系挖掘需要配置大模型服务，请联系管理员。"
                 ConversationRepository.add_message(self.conversation_id, "assistant", ai_response)
@@ -502,6 +515,42 @@ class ChatWebSocketHandler(BaseHandler, tornado.websocket.WebSocketHandler):
         except Exception as e:
             error_msg = f"AI 响应错误: {str(e)}"
             self.write_message({"type": "error", "data": error_msg})
+
+    def generate_ai_response(self, content):
+        model = self._get_model()
+        
+        if not model:
+            return f"您好！我是智能问数助手。您的问题是：\"{content}\"\n\n由于尚未配置大模型服务，我暂时无法为您提供完整的AI分析。请联系管理员配置模型引擎后，我将能为您提供更强大的智能分析能力！", 0
+        
+        try:
+            messages = [{"role": "user", "content": content}]
+            result = AIModelService.chat_completion(model, messages, stream=False)
+            
+            if isinstance(result, dict) and "error" in result:
+                error_msg = result["error"].get("message", str(result["error"]))
+                if "Authentication" in error_msg or "api key" in error_msg.lower() or "invalid" in error_msg.lower():
+                    return f"AI 响应失败：API Key 无效或认证失败。请检查模型配置中的 API Key 是否正确。\n\n错误详情：{error_msg}\n\n您的问题是：\"{content}\"", 0
+                return f"AI 响应失败：{error_msg}\n\n您的问题是：\"{content}\"", 0
+            
+            if "choices" in result and result["choices"]:
+                ai_response = result["choices"][0]["message"]["content"]
+                token_count = result.get("usage", {}).get("completion_tokens", len(ai_response) // 4)
+                
+                if model.get("id"):
+                    AIModelRepository.update_tokens(
+                        model["id"],
+                        result.get("usage", {}).get("prompt_tokens", 0),
+                        result.get("usage", {}).get("completion_tokens", 0)
+                    )
+                
+                return ai_response, token_count
+            else:
+                return f"AI 响应失败，请检查模型配置。", 0
+        except Exception as e:
+            error_str = str(e)
+            if "401" in error_str or "Authentication" in error_str:
+                return f"AI 响应失败：API Key 无效或认证失败。请检查模型配置中的 API Key 是否正确。\n\n错误详情：{error_str}\n\n您的问题是：\"{content}\"", 0
+            return f"调用大模型时发生错误: {error_str}\n\n您的问题是：\"{content}\"", 0
 
     def on_close(self):
         pass
