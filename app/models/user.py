@@ -29,7 +29,7 @@ class UserRepository:
                     SELECT u.id, u.username, u.role_id, r.name as role_name, u.status, u.created_at 
                     FROM users u LEFT JOIN roles r ON u.role_id = r.id 
                     WHERE u.username LIKE ? OR r.name LIKE ?
-                    ORDER BY u.created_at DESC LIMIT ? OFFSET ?
+                    ORDER BY CASE WHEN u.username='admin' THEN 0 ELSE 1 END, u.created_at DESC LIMIT ? OFFSET ?
                     """,
                     (f"%{keyword}%", f"%{keyword}%", page_size, offset)
                 )
@@ -40,7 +40,7 @@ class UserRepository:
                     """
                     SELECT u.id, u.username, u.role_id, r.name as role_name, u.status, u.created_at 
                     FROM users u LEFT JOIN roles r ON u.role_id = r.id 
-                    ORDER BY u.created_at DESC LIMIT ? OFFSET ?
+                    ORDER BY CASE WHEN u.username='admin' THEN 0 ELSE 1 END, u.created_at DESC LIMIT ? OFFSET ?
                     """,
                     (page_size, offset)
                 )
@@ -83,6 +83,9 @@ class UserRepository:
     def update_user(user_id: int, username: str, role_id: int = 1) -> bool:
         try:
             with get_connection() as conn:
+                row = conn.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()
+                if row and row["username"] == "admin":
+                    return False
                 conn.execute(
                     "UPDATE users SET username=?, role_id=? WHERE id=?",
                     (username, role_id, user_id)
@@ -94,12 +97,18 @@ class UserRepository:
     @staticmethod
     def delete_user(user_id: int) -> bool:
         with get_connection() as conn:
+            row = conn.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()
+            if row and row["username"] == "admin":
+                return False
             conn.execute("DELETE FROM users WHERE id=?", (user_id,))
         return True
 
     @staticmethod
     def toggle_user_status(user_id: int, status: int) -> bool:
         with get_connection() as conn:
+            row = conn.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()
+            if row and row["username"] == "admin":
+                return False
             conn.execute("UPDATE users SET status=? WHERE id=?", (status, user_id))
         return True
 
@@ -123,7 +132,7 @@ class UserRepository:
             return False
         salt = bytes.fromhex(row["salt"])
         return _hash_password(password, salt) == row["password_hash"]
-    
+
     @staticmethod
     def update_face_embedding(username: str, face_embedding: str) -> bool:
         with get_connection() as conn:

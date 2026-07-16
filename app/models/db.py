@@ -134,11 +134,16 @@ def init_db():
                 completion_tokens INTEGER DEFAULT 0,
                 description TEXT,
                 provider TEXT DEFAULT 'openai',
+                model_type TEXT NOT NULL DEFAULT 'text',
                 created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
             )
             """
         )
+        try:
+            conn.execute("ALTER TABLE ai_models ADD COLUMN model_type TEXT NOT NULL DEFAULT 'text'")
+        except sqlite3.OperationalError:
+            pass
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS data_warehouse(
@@ -249,6 +254,77 @@ def init_db():
             )
             """
         )
+        def ensure_role(name, description, is_default=0):
+            row = conn.execute("SELECT id FROM roles WHERE name=?", (name,)).fetchone()
+            if row:
+                conn.execute(
+                    "UPDATE roles SET description=?, is_default=?, status=1 WHERE id=?",
+                    (description, is_default, row["id"])
+                )
+                return row["id"]
+            cursor = conn.execute(
+                "INSERT INTO roles (name, description, is_default, status) VALUES (?,?,?,1)",
+                (name, description, is_default)
+            )
+            return cursor.lastrowid
+
+        def ensure_function(name, icon, url, parent_id=0, sort_order=0):
+            row = conn.execute(
+                "SELECT id FROM functions WHERE name=? AND parent_id=?",
+                (name, parent_id)
+            ).fetchone()
+            if row:
+                conn.execute(
+                    "UPDATE functions SET icon=?, url=?, sort_order=?, status=1 WHERE id=?",
+                    (icon, url, sort_order, row["id"])
+                )
+                return row["id"]
+            cursor = conn.execute(
+                "INSERT INTO functions (name, icon, url, parent_id, sort_order, status) VALUES (?,?,?,?,?,1)",
+                (name, icon, url, parent_id, sort_order)
+            )
+            return cursor.lastrowid
+
+        def ensure_role_function(role_id, function_id):
+            conn.execute(
+                "INSERT OR IGNORE INTO role_functions (role_id, function_id) VALUES (?,?)",
+                (role_id, function_id)
+            )
+
+        user_role_id = ensure_role("普通用户", "只能登录前台-用户侧", 1)
+        admin_role_id = ensure_role("系统管理员", "只能登录后台-后台管理系统", 1)
+        user_admin_role_id = ensure_role("用户管理员", "负责后台用户列表、用户状态和普通用户资料维护", 0)
+
+        dashboard_id = ensure_function("控制台", "layui-icon-home", "/admin/index", 0, 1)
+        user_root_id = ensure_function("用户管理", "layui-icon-user", "/admin/users", 0, 2)
+        user_list_id = ensure_function("用户列表", "layui-icon-list", "/admin/users", user_root_id, 1)
+        permission_root_id = ensure_function("权限管理", "layui-icon-set", "/admin/functions", 0, 3)
+        function_id = ensure_function("功能管理", "layui-icon-app", "/admin/functions", permission_root_id, 1)
+        menu_id = ensure_function("菜单管理", "layui-icon-tabs", "/admin/menus", permission_root_id, 2)
+        role_id = ensure_function("角色管理", "layui-icon-group", "/admin/roles", permission_root_id, 3)
+        data_root_id = ensure_function("数据管理", "layui-icon-chart", "/admin/data", 0, 4)
+        watch_id = ensure_function("瞭望采集", "layui-icon-search", "/admin/watch", data_root_id, 1)
+        data_id = ensure_function("数据仓库", "layui-icon-table", "/admin/data", data_root_id, 2)
+        collection_id = ensure_function("采集管理", "layui-icon-template", "/admin/collection", data_root_id, 3)
+        ai_root_id = ensure_function("AI管理", "layui-icon-service", "/admin/model", 0, 5)
+        employee_id = ensure_function("数字员工", "layui-icon-username", "/admin/digital_employee", ai_root_id, 1)
+        model_id = ensure_function("模型引擎", "layui-icon-engine", "/admin/model", ai_root_id, 2)
+        api_interface_id = ensure_function("接口管理", "layui-icon-link", "/admin/api_interface", ai_root_id, 3)
+        big_screen_id = ensure_function("数智大屏", "layui-icon-chart-screen", "/admin/screen", 0, 6)
+        sentiment_id = ensure_function("舆情大屏", "layui-icon-dialogue", "/admin/sentiment", 0, 7)
+        setting_id = ensure_function("系统设置", "layui-icon-set", "/admin/setting", 0, 8)
+
+        all_admin_functions = [
+            dashboard_id, user_root_id, user_list_id, permission_root_id, function_id, menu_id, role_id,
+            data_root_id, watch_id, data_id, collection_id, ai_root_id, employee_id, model_id,
+            api_interface_id, big_screen_id, sentiment_id, setting_id
+        ]
+        for function_id_value in all_admin_functions:
+            ensure_role_function(admin_role_id, function_id_value)
+
+        for function_id_value in [dashboard_id, user_root_id, user_list_id]:
+            ensure_role_function(user_admin_role_id, function_id_value)
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS system_settings(
@@ -297,14 +373,26 @@ def init_db():
                 )
         cursor = conn.execute("SELECT COUNT(*) FROM admins WHERE username='admin'")
         count = cursor.fetchone()[0]
+        import hashlib
+        import secrets
+        salt = secrets.token_bytes(16)
+        password_hash = hashlib.pbkdf2_hmac("sha256", "admin888".encode("utf-8"), salt, 100_000).hex()
         if count == 0:
-            import hashlib
-            import secrets
-            salt = secrets.token_bytes(16)
-            password_hash = hashlib.pbkdf2_hmac("sha256", "admin888".encode("utf-8"), salt, 100_000).hex()
             conn.execute(
-                "INSERT INTO admins (username, password_hash, salt, is_super) VALUES (?,?,?,?)",
+                "INSERT INTO admins (username, password_hash, salt, is_super, status) VALUES (?,?,?,?,1)",
                 ("admin", password_hash, salt.hex(), 1)
+            )
+
+        admin_user = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()
+        if admin_user:
+            conn.execute(
+                "UPDATE users SET role_id=?, status=1 WHERE username='admin'",
+                (admin_role_id,)
+            )
+        else:
+            conn.execute(
+                "INSERT INTO users (username, password_hash, salt, role_id, status) VALUES (?,?,?,?,1)",
+                ("admin", password_hash, salt.hex(), admin_role_id)
             )
         cursor = conn.execute("SELECT COUNT(*) FROM roles")
         count = cursor.fetchone()[0]
