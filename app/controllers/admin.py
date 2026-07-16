@@ -10,7 +10,7 @@ from app.models.function import FunctionRepository
 from app.models.watch import WatchSourceRepository, WatchRecordRepository, WatchCollector
 from app.models.model import AIModelRepository, AIModelService
 from app.models.warehouse import DataWarehouseRepository, DeepCollectTaskRepository, DeepCollectService
-from app.models.digital_employee import DigitalEmployeeRepository, DigitalEmployeeService
+from app.models.digital_employee import DigitalEmployeeRepository, DigitalEmployeeService, APIInterfaceRepository
 from app.models.setting import SystemSettingRepository
 
 
@@ -451,10 +451,11 @@ class AdminDigitalEmployeeHandler(AdminBaseHandler):
         stats = DigitalEmployeeRepository.get_stats()
         
         models, _ = AIModelRepository.get_models(page=1, page_size=100)
+        interfaces = APIInterfaceRepository.get_all_active_interfaces()
         
         self.render("admin/digital_employee.html", title="数字员工", 
                     employees=employees, total=total, page=page, 
-                    keyword=keyword, type=employee_type, stats=stats, models=models)
+                    keyword=keyword, type=employee_type, stats=stats, models=models, interfaces=interfaces)
 
     def post(self):
         action = self.get_body_argument("action", "")
@@ -479,6 +480,8 @@ class AdminDigitalEmployeeHandler(AdminBaseHandler):
             api_headers = self.get_body_argument("api_headers", "")
             api_params = self.get_body_argument("api_params", "")
             api_body = self.get_body_argument("api_body", "")
+            api_interface_id = int(self.get_body_argument("api_interface_id", 0))
+            card_template = self.get_body_argument("card_template", "")
             description = self.get_body_argument("description", "")
             
             md_files_path = ""
@@ -490,7 +493,7 @@ class AdminDigitalEmployeeHandler(AdminBaseHandler):
             if DigitalEmployeeRepository.create_employee(
                 name, code_name, employee_type, model_id, prompt, skills,
                 use_crawl4ai, api_url, api_method, api_headers, api_params, api_body, description,
-                md_files_path=md_files_path
+                md_files_path=md_files_path, api_interface_id=api_interface_id, card_template=card_template
             ):
                 self.write(json.dumps({"status": "success", "message": "数字员工添加成功"}))
             else:
@@ -512,6 +515,8 @@ class AdminDigitalEmployeeHandler(AdminBaseHandler):
             api_headers = self.get_body_argument("api_headers", "")
             api_params = self.get_body_argument("api_params", "")
             api_body = self.get_body_argument("api_body", "")
+            api_interface_id = int(self.get_body_argument("api_interface_id", 0))
+            card_template = self.get_body_argument("card_template", "")
             description = self.get_body_argument("description", "")
             status = int(self.get_body_argument("status", 1))
             
@@ -525,7 +530,7 @@ class AdminDigitalEmployeeHandler(AdminBaseHandler):
             if DigitalEmployeeRepository.update_employee(
                 employee_id, name, code_name, employee_type, model_id, prompt, skills,
                 use_crawl4ai, api_url, api_method, api_headers, api_params, api_body, description, status,
-                md_files_path=md_files_path
+                md_files_path=md_files_path, api_interface_id=api_interface_id, card_template=card_template
             ):
                 self.write(json.dumps({"status": "success", "message": "数字员工更新成功"}))
             else:
@@ -709,6 +714,74 @@ class AdminDashboardHandler(AdminBaseHandler):
 class AdminSentimentHandler(AdminBaseHandler):
     def get(self):
         self.render("admin/sentiment.html", title="舆情大屏")
+
+
+class AdminAPIInterfaceHandler(AdminBaseHandler):
+    def get(self):
+        page = int(self.get_query_argument("page", 1))
+        keyword = self.get_query_argument("keyword", "")
+        
+        interfaces, total = APIInterfaceRepository.get_interfaces(page=page, page_size=20, keyword=keyword)
+        
+        self.render("admin/api_interface.html", title="接口管理", 
+                    interfaces=interfaces, total=total, page=page, keyword=keyword)
+
+    def post(self):
+        action = self.get_body_argument("action", "")
+        
+        if action == "get":
+            interface_id = int(self.get_body_argument("id", 0))
+            interface = APIInterfaceRepository.get_interface_by_id(interface_id)
+            if interface:
+                self.write(json.dumps(interface))
+            else:
+                self.write(json.dumps({"status": "error", "message": "接口不存在"}))
+        elif action == "add":
+            name = self.get_body_argument("name", "")
+            url = self.get_body_argument("url", "")
+            method = self.get_body_argument("method", "GET")
+            headers = self.get_body_argument("headers", "{}")
+            params = self.get_body_argument("params", "{}")
+            body = self.get_body_argument("body", "{}")
+            response_mapping = self.get_body_argument("response_mapping", "{}")
+            description = self.get_body_argument("description", "")
+            
+            if APIInterfaceRepository.create_interface(
+                name, url, method, headers, params, body, response_mapping, description
+            ):
+                self.write(json.dumps({"status": "success", "message": "接口添加成功"}))
+            else:
+                self.write(json.dumps({"status": "error", "message": "名称已存在"}))
+        
+        elif action == "edit":
+            interface_id = int(self.get_body_argument("id", 0))
+            name = self.get_body_argument("name", "")
+            url = self.get_body_argument("url", "")
+            method = self.get_body_argument("method", "GET")
+            headers = self.get_body_argument("headers", "{}")
+            params = self.get_body_argument("params", "{}")
+            body = self.get_body_argument("body", "{}")
+            response_mapping = self.get_body_argument("response_mapping", "{}")
+            description = self.get_body_argument("description", "")
+            status = int(self.get_body_argument("status", 1))
+            
+            if APIInterfaceRepository.update_interface(
+                interface_id, name, url, method, headers, params, body, response_mapping, description, status
+            ):
+                self.write(json.dumps({"status": "success", "message": "接口更新成功"}))
+            else:
+                self.write(json.dumps({"status": "error", "message": "名称已存在"}))
+        
+        elif action == "delete":
+            interface_id = int(self.get_body_argument("id", 0))
+            APIInterfaceRepository.delete_interface(interface_id)
+            self.write(json.dumps({"status": "success", "message": "删除成功"}))
+        
+        elif action == "toggle":
+            interface_id = int(self.get_body_argument("id", 0))
+            status = int(self.get_body_argument("status", 0))
+            APIInterfaceRepository.toggle_interface_status(interface_id, status)
+            self.write(json.dumps({"status": "success", "message": "状态更新成功"}))
 
 
 class AdminSettingHandler(AdminBaseHandler):
