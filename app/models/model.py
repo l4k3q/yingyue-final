@@ -7,6 +7,12 @@ import tiktoken
 from app.models.db import get_connection
 
 
+def mask_api_key(api_key: str) -> str:
+    if not api_key or len(api_key) <= 7:
+        return '******'
+    return api_key[:3] + '******' + api_key[-4:]
+
+
 class AIModelRepository:
     @staticmethod
     def get_models(page: int = 1, page_size: int = 20, keyword: str = ""):

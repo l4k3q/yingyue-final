@@ -8,9 +8,10 @@ from app.models.user import UserRepository
 from app.models.role import RoleRepository
 from app.models.function import FunctionRepository
 from app.models.watch import WatchSourceRepository, WatchRecordRepository, WatchCollector
-from app.models.model import AIModelRepository, AIModelService
+from app.models.model import AIModelRepository, AIModelService, mask_api_key
 from app.models.warehouse import DataWarehouseRepository, DeepCollectTaskRepository, DeepCollectService
-from app.models.digital_employee import DigitalEmployeeRepository, DigitalEmployeeService
+from app.models.digital_employee import DigitalEmployeeRepository, DigitalEmployeeService, APIInterfaceRepository
+from app.models.setting import SystemSettingRepository
 
 
 class AdminBaseHandler(tornado.web.RequestHandler):
@@ -35,11 +36,17 @@ class AdminBaseHandler(tornado.web.RequestHandler):
         namespace = super().get_template_namespace()
         current_user = self.get_current_user()
         role_id = self.get_current_role_id()
+        try:
+            settings_list = SystemSettingRepository.get_all_settings()
+            site = {setting["key"]: setting["value"] for setting in settings_list}
+        except Exception:
+            site = {"site_name": "智能瞭望与问数系统", "site_subtitle": "DataFinderAgentOS"}
         namespace.update({
             "current_admin": current_user or "",
             "current_path": self.request.path,
             "admin_menu": FunctionRepository.get_menu_tree_for_user(current_user or "", role_id),
             "is_menu_active": self.is_menu_active,
+            "site": site,
         })
         return namespace
 
@@ -75,6 +82,50 @@ class AdminBaseHandler(tornado.web.RequestHandler):
                 self.write("<h2>403 无权限</h2><p>当前角色未被授权访问该后台功能。</p>")
             self.finish()
 
+    def has_function_permission(self, url: str) -> bool:
+        """校验当前管理员角色是否拥有指定 URL 对应的功能权限。admin/系统管理员默认放行。"""
+        username = self.get_current_user()
+        role_id = self.get_current_role_id()
+        # admin 账号与系统管理员角色默认拥有所有权限
+        if username == "admin" or role_id == 2:
+            return True
+
+        # 兼容旧数据库：数智大屏功能 URL 可能为 /admin/dashboard 或 /admin/screen
+        check_urls = [url]
+        if url == "/admin/screen":
+            check_urls.append("/admin/dashboard")
+        elif url == "/admin/dashboard":
+            check_urls.append("/admin/screen")
+
+        allowed_ids = RoleRepository.get_role_functions(role_id)
+        for check_url in check_urls:
+            func = FunctionRepository.get_function_by_url(check_url)
+            if func and func["id"] in allowed_ids:
+                return True
+        return False
+
+    def require_function_permission(self, url: str):
+        """无权限时跳转至无权限提示页。"""
+        if not self.has_function_permission(url):
+            self.redirect("/admin/no_permission")
+            return False
+        return True
+
+    def render(self, template_name, **kwargs):
+        """向所有后台模板注入当前用户拥有的功能权限列表，便于菜单按需展示。"""
+        if "user_functions" not in kwargs:
+            role_id = self.get_current_role_id()
+            if role_id and (self.get_current_user() == "admin" or role_id == 2):
+                kwargs["user_functions"] = [f["url"] for f in FunctionRepository.get_all_functions() if f.get("url")]
+            elif role_id:
+                allowed_ids = RoleRepository.get_role_functions(role_id)
+                kwargs["user_functions"] = [
+                    f["url"] for f in FunctionRepository.get_all_functions()
+                    if f.get("id") in allowed_ids and f.get("url")
+                ]
+            else:
+                kwargs["user_functions"] = []
+        super().render(template_name, **kwargs)
 
 class AdminLoginHandler(tornado.web.RequestHandler):
     def get(self):
@@ -347,9 +398,19 @@ class AdminWatchHandler(AdminBaseHandler):
             source_ids = [int(s) for s in source_ids.split(",") if s.strip()]
             
             for source_id in source_ids:
+                source = WatchSourceRepository.get_source_by_id(source_id)
                 html_content = WatchCollector.collect(source_id, keyword, page=1)
                 if html_content and "采集失败" not in html_content:
-                    articles = WatchCollector.parse_baidu_news(html_content)
+                    # 根据源的配置选择解析器
+                    parser_name = WatchCollector.get_parser(source)
+                    if parser_name == "sina_news":
+                        articles = WatchCollector.parse_sina_news(html_content)
+                    elif parser_name == "sogou_news":
+                        articles = WatchCollector.parse_sogou_news(html_content)
+                    elif parser_name == "360_news":
+                        articles = WatchCollector.parse_360_news(html_content)
+                    else:
+                        articles = WatchCollector.parse_baidu_news(html_content)
                     WatchRecordRepository.create_record(source_id, keyword, page=1, data=json.dumps(articles), status=1)
                 else:
                     WatchRecordRepository.create_record(source_id, keyword, page=1, data=html_content or "", status=0)
@@ -391,7 +452,8 @@ class AdminWatchSourceHandler(AdminBaseHandler):
             request_headers = self.get_body_argument("request_headers", "")
             params = self.get_body_argument("params", "")
             description = self.get_body_argument("description", "")
-            WatchSourceRepository.create_source(name, url, request_headers, params, description)
+            collect_config = self.get_body_argument("collect_config", "")
+            WatchSourceRepository.create_source(name, url, request_headers, params, description, collect_config)
             self.redirect("/admin/watch/source")
         elif action == "edit":
             source_id = int(self.get_body_argument("id", 0))
@@ -400,7 +462,8 @@ class AdminWatchSourceHandler(AdminBaseHandler):
             request_headers = self.get_body_argument("request_headers", "")
             params = self.get_body_argument("params", "")
             description = self.get_body_argument("description", "")
-            WatchSourceRepository.update_source(source_id, name, url, request_headers, params, description)
+            collect_config = self.get_body_argument("collect_config", "")
+            WatchSourceRepository.update_source(source_id, name, url, request_headers, params, description, collect_config)
             self.redirect("/admin/watch/source")
         elif action == "delete":
             source_id = int(self.get_body_argument("id", 0))
@@ -414,9 +477,19 @@ class AdminWatchSourceHandler(AdminBaseHandler):
         elif action == "test":
             source_id = int(self.get_body_argument("id", 0))
             keyword = self.get_body_argument("keyword", "测试")
+            source = WatchSourceRepository.get_source_by_id(source_id)
             html_content = WatchCollector.collect(source_id, keyword, page=1)
             if html_content and "采集失败" not in html_content:
-                articles = WatchCollector.parse_baidu_news(html_content)
+                # 根据源的配置选择解析器
+                parser_name = WatchCollector.get_parser(source)
+                if parser_name == "sina_news":
+                    articles = WatchCollector.parse_sina_news(html_content)
+                elif parser_name == "sogou_news":
+                    articles = WatchCollector.parse_sogou_news(html_content)
+                elif parser_name == "360_news":
+                    articles = WatchCollector.parse_360_news(html_content)
+                else:
+                    articles = WatchCollector.parse_baidu_news(html_content)
                 self.write(json.dumps({"status": "success", "data": articles}))
             else:
                 self.write(json.dumps({"status": "error", "message": html_content}))
@@ -531,10 +604,11 @@ class AdminDigitalEmployeeHandler(AdminBaseHandler):
         stats = DigitalEmployeeRepository.get_stats()
         
         models, _ = AIModelRepository.get_models(page=1, page_size=100)
+        interfaces = APIInterfaceRepository.get_all_active_interfaces()
         
         self.render("admin/digital_employee.html", title="数字员工", 
                     employees=employees, total=total, page=page, 
-                    keyword=keyword, type=employee_type, stats=stats, models=models)
+                    keyword=keyword, type=employee_type, stats=stats, models=models, interfaces=interfaces)
 
     def post(self):
         action = self.get_body_argument("action", "")
@@ -559,6 +633,8 @@ class AdminDigitalEmployeeHandler(AdminBaseHandler):
             api_headers = self.get_body_argument("api_headers", "")
             api_params = self.get_body_argument("api_params", "")
             api_body = self.get_body_argument("api_body", "")
+            api_interface_id = int(self.get_body_argument("api_interface_id", 0))
+            card_template = self.get_body_argument("card_template", "")
             description = self.get_body_argument("description", "")
             
             md_files_path = ""
@@ -570,7 +646,7 @@ class AdminDigitalEmployeeHandler(AdminBaseHandler):
             if DigitalEmployeeRepository.create_employee(
                 name, code_name, employee_type, model_id, prompt, skills,
                 use_crawl4ai, api_url, api_method, api_headers, api_params, api_body, description,
-                md_files_path=md_files_path
+                md_files_path=md_files_path, api_interface_id=api_interface_id, card_template=card_template
             ):
                 self.write(json.dumps({"status": "success", "message": "数字员工添加成功"}))
             else:
@@ -592,6 +668,8 @@ class AdminDigitalEmployeeHandler(AdminBaseHandler):
             api_headers = self.get_body_argument("api_headers", "")
             api_params = self.get_body_argument("api_params", "")
             api_body = self.get_body_argument("api_body", "")
+            api_interface_id = int(self.get_body_argument("api_interface_id", 0))
+            card_template = self.get_body_argument("card_template", "")
             description = self.get_body_argument("description", "")
             status = int(self.get_body_argument("status", 1))
             
@@ -605,7 +683,7 @@ class AdminDigitalEmployeeHandler(AdminBaseHandler):
             if DigitalEmployeeRepository.update_employee(
                 employee_id, name, code_name, employee_type, model_id, prompt, skills,
                 use_crawl4ai, api_url, api_method, api_headers, api_params, api_body, description, status,
-                md_files_path=md_files_path
+                md_files_path=md_files_path, api_interface_id=api_interface_id, card_template=card_template
             ):
                 self.write(json.dumps({"status": "success", "message": "数字员工更新成功"}))
             else:
@@ -658,6 +736,8 @@ class AdminModelHandler(AdminBaseHandler):
         page = int(self.get_query_argument("page", 1))
         keyword = self.get_query_argument("keyword", "")
         models, total = AIModelRepository.get_models(page=page, page_size=12, keyword=keyword)
+        for model in models:
+            model["api_key"] = mask_api_key(model["api_key"])
         token_stats = AIModelRepository.get_token_stats()
         self.render("admin/model.html", title="模型引擎", models=models, total=total, page=page, keyword=keyword, token_stats=token_stats)
 
@@ -667,6 +747,7 @@ class AdminModelHandler(AdminBaseHandler):
             model_id = int(self.get_body_argument("id", 0))
             model = AIModelRepository.get_model_by_id(model_id)
             if model:
+                model["api_key"] = mask_api_key(model["api_key"])
                 self.write(json.dumps(model))
             else:
                 self.write(json.dumps({"error": "模型不存在"}))
@@ -694,6 +775,10 @@ class AdminModelHandler(AdminBaseHandler):
             name = self.get_body_argument("name", "")
             model_id_str = self.get_body_argument("model_id", "")
             api_key = self.get_body_argument("api_key", "")
+            if "******" in api_key:
+                original_model = AIModelRepository.get_model_by_id(model_id)
+                if original_model:
+                    api_key = original_model["api_key"]
             base_url = self.get_body_argument("base_url", "")
             model_type = self.get_body_argument("model_type", "text")
             temperature = float(self.get_body_argument("temperature", 0.7))
@@ -799,6 +884,108 @@ class AdminDashboardHandler(AdminBaseHandler):
         self.render("admin/dashboard.html", title="数智大屏")
 
 
+class AdminScreenHandler(AdminBaseHandler):
+    def get(self):
+        if not self.require_function_permission("/admin/screen"):
+            return
+        self.render("admin/screen.html", title="瞭望采集数智可视化大屏")
+
+
 class AdminSentimentHandler(AdminBaseHandler):
     def get(self):
         self.render("admin/sentiment.html", title="舆情大屏")
+
+
+class AdminAPIInterfaceHandler(AdminBaseHandler):
+    def get(self):
+        page = int(self.get_query_argument("page", 1))
+        keyword = self.get_query_argument("keyword", "")
+        
+        interfaces, total = APIInterfaceRepository.get_interfaces(page=page, page_size=20, keyword=keyword)
+        
+        self.render("admin/api_interface.html", title="接口管理", 
+                    interfaces=interfaces, total=total, page=page, keyword=keyword)
+
+    def post(self):
+        action = self.get_body_argument("action", "")
+        
+        if action == "get":
+            interface_id = int(self.get_body_argument("id", 0))
+            interface = APIInterfaceRepository.get_interface_by_id(interface_id)
+            if interface:
+                self.write(json.dumps(interface))
+            else:
+                self.write(json.dumps({"status": "error", "message": "接口不存在"}))
+        elif action == "add":
+            name = self.get_body_argument("name", "")
+            url = self.get_body_argument("url", "")
+            method = self.get_body_argument("method", "GET")
+            headers = self.get_body_argument("headers", "{}")
+            params = self.get_body_argument("params", "{}")
+            body = self.get_body_argument("body", "{}")
+            response_mapping = self.get_body_argument("response_mapping", "{}")
+            description = self.get_body_argument("description", "")
+            
+            if APIInterfaceRepository.create_interface(
+                name, url, method, headers, params, body, response_mapping, description
+            ):
+                self.write(json.dumps({"status": "success", "message": "接口添加成功"}))
+            else:
+                self.write(json.dumps({"status": "error", "message": "名称已存在"}))
+        
+        elif action == "edit":
+            interface_id = int(self.get_body_argument("id", 0))
+            name = self.get_body_argument("name", "")
+            url = self.get_body_argument("url", "")
+            method = self.get_body_argument("method", "GET")
+            headers = self.get_body_argument("headers", "{}")
+            params = self.get_body_argument("params", "{}")
+            body = self.get_body_argument("body", "{}")
+            response_mapping = self.get_body_argument("response_mapping", "{}")
+            description = self.get_body_argument("description", "")
+            status = int(self.get_body_argument("status", 1))
+            
+            if APIInterfaceRepository.update_interface(
+                interface_id, name, url, method, headers, params, body, response_mapping, description, status
+            ):
+                self.write(json.dumps({"status": "success", "message": "接口更新成功"}))
+            else:
+                self.write(json.dumps({"status": "error", "message": "名称已存在"}))
+        
+        elif action == "delete":
+            interface_id = int(self.get_body_argument("id", 0))
+            APIInterfaceRepository.delete_interface(interface_id)
+            self.write(json.dumps({"status": "success", "message": "删除成功"}))
+        
+        elif action == "toggle":
+            interface_id = int(self.get_body_argument("id", 0))
+            status = int(self.get_body_argument("status", 0))
+            APIInterfaceRepository.toggle_interface_status(interface_id, status)
+            self.write(json.dumps({"status": "success", "message": "状态更新成功"}))
+
+
+class AdminNoPermissionHandler(AdminBaseHandler):
+    def get(self):
+        self.render("admin/no_permission.html", title="无访问权限")
+
+
+class AdminSettingHandler(AdminBaseHandler):
+    def get(self):
+        groups = SystemSettingRepository.get_grouped_settings()
+        self.render("admin/setting.html", title="系统设置", groups=groups)
+
+    def post(self):
+        action = self.get_body_argument("action", "")
+        if action == "save":
+            settings = SystemSettingRepository.get_all_settings()
+            for s in settings:
+                key = s["key"]
+                new_value = self.get_body_argument(key, None)
+                if new_value is not None:
+                    SystemSettingRepository.update_setting(key, new_value)
+            self.write(json.dumps({"status": "success", "message": "设置保存成功"}))
+        elif action == "reset":
+            # For reset, we could re-seed but simplest is to redirect back
+            self.write(json.dumps({"status": "success", "message": "已重置"}))
+        else:
+            self.write(json.dumps({"status": "error", "message": "未知操作"}))

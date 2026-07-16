@@ -132,3 +132,21 @@ class UserRepository:
             return False
         salt = bytes.fromhex(row["salt"])
         return _hash_password(password, salt) == row["password_hash"]
+
+    @staticmethod
+    def update_face_embedding(username: str, face_embedding: str) -> bool:
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE users SET face_embedding=? WHERE username=?",
+                (face_embedding, username)
+            )
+        return True
+    
+    @staticmethod
+    def get_users_with_face_embedding():
+        with get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT id, username, face_embedding FROM users WHERE face_embedding IS NOT NULL AND face_embedding != '' AND status=1"
+            )
+            rows = cursor.fetchall()
+        return [dict(row) for row in rows]

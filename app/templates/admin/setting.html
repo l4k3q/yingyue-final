@@ -1,0 +1,219 @@
+{% extends "../admin/base.html" %}
+{% block body %}
+<div style="display:none;">{% module xsrf_form_html() %}</div>
+<style>
+    .setting-card {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        margin-bottom: 20px;
+    }
+    .setting-card .card-header {
+        padding: 16px 24px;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .setting-card .card-header i {
+        font-size: 18px;
+        color: #165DFF;
+    }
+    .setting-card .card-header h3 {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1D2129;
+        margin: 0;
+    }
+    .setting-card .card-body {
+        padding: 24px;
+    }
+    .form-row {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 20px;
+    }
+    .form-row:last-child {
+        margin-bottom: 0;
+    }
+    .form-label {
+        width: 140px;
+        flex-shrink: 0;
+        text-align: right;
+        padding-right: 16px;
+        padding-top: 9px;
+        font-size: 14px;
+        color: #4E5969;
+    }
+    .form-field {
+        flex: 1;
+        max-width: 480px;
+    }
+    .form-field .layui-input,
+    .form-field .layui-textarea {
+        border-radius: 4px;
+    }
+    .form-desc {
+        font-size: 12px;
+        color: #86909C;
+        margin-top: 6px;
+    }
+    .tab-wrapper {
+        margin-bottom: 0;
+    }
+    .tab-wrapper .layui-tab-title {
+        background: #fff;
+        border-radius: 8px 8px 0 0;
+        margin-bottom: 0;
+        padding: 0 20px;
+    }
+    .tab-content {
+        background: #fff;
+        border-radius: 0 0 8px 8px;
+        padding: 24px;
+        min-height: 360px;
+    }
+    .save-bar {
+        position: sticky;
+        bottom: 0;
+        background: #fff;
+        border-top: 1px solid #f0f0f0;
+        padding: 16px 24px;
+        margin-top: 20px;
+        border-radius: 8px;
+        box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+    }
+    .group-desc {
+        color: #86909C;
+        font-size: 13px;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px dashed #e5e6eb;
+    }
+</style>
+
+<div class="tab-wrapper">
+    <div class="layui-tab layui-tab-brief" lay-filter="setting-tab">
+        <ul class="layui-tab-title">
+            <li class="layui-this"><i class="fas fa-cog mr-1"></i> 常规设置</li>
+            <li><i class="fas fa-database mr-1"></i> 数据库设置</li>
+            <li><i class="fas fa-shield-alt mr-1"></i> 安全设置</li>
+            <li><i class="fas fa-brain mr-1"></i> 大模型设置</li>
+        </ul>
+        <div class="tab-content">
+            <form id="settings-form" class="layui-form">
+                {% for group_name, settings in groups.items() %}
+                <div class="tab-pane" data-group="{{ group_name }}" {% if group_name == 'general' %}style="display:block;"{% else %}style="display:none;"{% end %}>
+                    {% if group_name == 'general' %}
+                    <p class="group-desc">配置系统的基本信息，包括名称、版本、描述等。</p>
+                    {% elif group_name == 'database' %}
+                    <p class="group-desc">数据库连接配置。当前系统使用SQLite作为默认数据库引擎。</p>
+                    {% elif group_name == 'security' %}
+                    <p class="group-desc">安全相关配置，包括会话管理、登录限制和接口频率控制。</p>
+                    {% elif group_name == 'llm' %}
+                    <p class="group-desc">大模型API的默认配置，新增模型时将使用这些默认值。</p>
+                    {% end %}
+                    {% for setting in settings %}
+                    <div class="form-row">
+                        <div class="form-label">{{ setting['label'] }}</div>
+                        <div class="form-field">
+                            {% if setting['type'] == 'textarea' %}
+                            <textarea name="{{ setting['key'] }}" class="layui-textarea" rows="3">{{ setting['value'] }}</textarea>
+                            {% elif setting['type'] == 'password' %}
+                            <input type="password" name="{{ setting['key'] }}" value="{{ setting['value'] }}" class="layui-input" autocomplete="off">
+                            {% elif setting['type'] == 'number' %}
+                            <input type="number" name="{{ setting['key'] }}" value="{{ setting['value'] }}" class="layui-input">
+                            {% elif setting['type'] == 'select' %}
+                            <select name="{{ setting['key'] }}" class="layui-input">
+                                <option value="true" {% if setting['value'] == 'true' %}selected{% end %}>启用</option>
+                                <option value="false" {% if setting['value'] == 'false' %}selected{% end %}>禁用</option>
+                            </select>
+                            {% else %}
+                            <input type="text" name="{{ setting['key'] }}" value="{{ setting['value'] }}" class="layui-input">
+                            {% end %}
+                            {% if setting.get('description') %}
+                            <p class="form-desc">{{ setting['description'] }}</p>
+                            {% end %}
+                        </div>
+                    </div>
+                    {% end %}
+                </div>
+                {% end %}
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="save-bar">
+    <button class="layui-btn layui-btn-primary" id="reset-btn">
+        <i class="fas fa-undo mr-1"></i>恢复默认
+    </button>
+    <button class="layui-btn" id="save-btn">
+        <i class="fas fa-save mr-1"></i>保存设置
+    </button>
+</div>
+{% end %}
+
+{% block script %}
+<script>
+layui.use(['element', 'layer'], function(){
+    var element = layui.element;
+    var layer = layui.layer;
+
+    element.on('tab(setting-tab)', function(data){
+        var tabIndex = data.index;
+        var panes = document.querySelectorAll('.tab-pane');
+        panes.forEach(function(pane, idx){
+            pane.style.display = idx === tabIndex ? 'block' : 'none';
+        });
+    });
+
+    document.getElementById('save-btn').addEventListener('click', function(){
+        var form = document.getElementById('settings-form');
+        var formData = new FormData(form);
+        formData.append('action', 'save');
+        formData.append('_xsrf', document.querySelector('input[name="_xsrf"]').value);
+
+        var btn = this;
+        var originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-pulse mr-1"></i>保存中...';
+        btn.disabled = true;
+        btn.classList.add('layui-btn-disabled');
+
+        fetch('/admin/setting', {
+            method: 'POST',
+            body: formData
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+            if (data.status === 'success'){
+                layer.msg('设置保存成功', {icon: 1});
+            } else {
+                layer.msg(data.message || '保存失败', {icon: 2});
+            }
+        })
+        .catch(function(){
+            layer.msg('网络错误，请重试', {icon: 2});
+        })
+        .finally(function(){
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            btn.classList.remove('layui-btn-disabled');
+        });
+    });
+
+    document.getElementById('reset-btn').addEventListener('click', function(){
+        layer.confirm('确定要恢复默认设置吗？当前修改将丢失。', {
+            title: '确认恢复',
+            btn: ['确定', '取消']
+        }, function(index){
+            layer.close(index);
+            location.reload();
+        });
+    });
+});
+</script>
+{% end %}
