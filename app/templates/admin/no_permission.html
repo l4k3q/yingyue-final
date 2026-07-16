@@ -1,0 +1,23 @@
+{% extends "../admin/base.html" %}
+{% block body %}
+<div class="admin-content" style="display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 60px);">
+    <div class="layui-card" style="text-align: center; padding: 50px 60px; max-width: 480px;">
+        <div style="font-size: 64px; color: #ff6b6b; margin-bottom: 20px;">
+            <i class="layui-icon layui-icon-face-cry"></i>
+        </div>
+        <h2 style="font-size: 22px; color: #333; margin-bottom: 15px;">无访问权限</h2>
+        <p style="color: #666; font-size: 14px; margin-bottom: 30px;">
+            您当前账号未被授予「瞭望采集数智可视化大屏」访问权限，<br>
+            请联系系统管理员在「角色权限配置」中为您分配该功能。
+        </p>
+        <div>
+            <a href="/admin/index" class="layui-btn layui-btn-normal">
+                <i class="layui-icon layui-icon-home"></i> 返回首页
+            </a>
+            <a href="javascript:history.back();" class="layui-btn layui-btn-primary" style="margin-left: 10px;">
+                返回上页
+            </a>
+        </div>
+    </div>
+</div>
+{% end %}

@@ -186,6 +186,10 @@ def init_db():
             conn.execute("ALTER TABLE digital_employees ADD COLUMN md_files_path TEXT")
         except sqlite3.OperationalError:
             pass
+        try:
+            conn.execute("ALTER TABLE watch_sources ADD COLUMN collect_config TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS deep_collect_tasks(
@@ -299,7 +303,7 @@ def init_db():
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('AI管理', 'icon-robot', '/admin/model', 0, 5)")
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('数字员工', 'icon-face', '/admin/digital_employee', 13, 1)")
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('模型引擎', 'icon-cpu', '/admin/model', 13, 2)")
-            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('数智大屏', 'icon-screen', '/admin/dashboard', 0, 6)")
+            conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('数智大屏', 'icon-screen', '/admin/screen', 0, 6)")
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('舆情大屏', 'icon-cloud', '/admin/sentiment', 0, 7)")
             conn.execute("INSERT INTO functions (name, icon, url, parent_id, sort_order) VALUES ('系统设置', 'icon-set', '/admin/setting', 0, 8)")
             conn.execute("INSERT INTO role_functions (role_id, function_id) VALUES (2, 1)")
@@ -357,9 +361,46 @@ def init_db():
                 "tn": "news",
                 "rsv_dl": "ns_pc"
             }
+            baidu_config = {
+                "keyword_param": "word",
+                "page_param": "pn",
+                "page_start": 0,
+                "page_step": 10,
+                "parser": "baidu_news"
+            }
             conn.execute(
-                "INSERT INTO watch_sources (name, url, request_headers, params, status, description) VALUES (?,?,?,?,?,?)",
-                ("百度新闻", "https://www.baidu.com/s", json.dumps(baidu_headers), json.dumps(baidu_params), 1, "百度新闻搜索接口，支持关键词搜索和分页")
+                "INSERT INTO watch_sources (name, url, request_headers, params, status, description, collect_config) VALUES (?,?,?,?,?,?,?)",
+                ("百度新闻", "https://www.baidu.com/s", json.dumps(baidu_headers), json.dumps(baidu_params), 1, "百度新闻搜索接口，支持关键词搜索和分页", json.dumps(baidu_config))
+            )
+
+            sina_headers = {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Host": "search.sina.com.cn",
+                "Pragma": "no-cache",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 QQBrowser/21.4.9121.400",
+                "sec-ch-ua": "\"Chromium\";v=\"138\", \"Not=A?Brand\";v=\"8\", \"QQBrowser\";v=\"138\"",
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": "\"Windows\""
+            }
+            sina_params = {}
+            sina_config = {
+                "keyword_param": "q",
+                "page_param": "page",
+                "page_start": 1,
+                "page_step": 1,
+                "parser": "sina_news"
+            }
+            conn.execute(
+                "INSERT INTO watch_sources (name, url, request_headers, params, status, description, collect_config) VALUES (?,?,?,?,?,?,?)",
+                ("新浪新闻", "https://search.sina.com.cn/", json.dumps(sina_headers), json.dumps(sina_params), 1, "新浪新闻搜索接口，支持关键词搜索和分页", json.dumps(sina_config))
             )
         
         cursor = conn.execute("SELECT COUNT(*) FROM ai_models")
